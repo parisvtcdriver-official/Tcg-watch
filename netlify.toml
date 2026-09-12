@@ -1,0 +1,13 @@
+# TCG Watch — configuration Netlify.
+# Le dossier public/ (PWA) est servi tel quel par le CDN Netlify, sans
+# fonction. /api/* est route directement vers netlify/functions/api.js via
+# son `export const config = { path: "/api/*" }` — pas besoin de redirection
+# ici, Netlify Functions v2 s'en charge tout seul.
+
+[build]
+  publish = "public"
+  functions = "netlify/functions"
+  command = "true"   # rien a compiler, du JS pur
+
+# Le scan planifie n'a pas de route HTTP publique : Netlify le declenche
+# lui-meme selon `schedule` (voir netlify/functions/scan-cron.js).

@@ -1,0 +1,1015 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0d233e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="TCG Watch">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="icon" href="/icon-192.png" type="image/png">
+<title>TCG Watch</title>
+<style>
+:root{
+  --bg:#0d1017; --surface:#161a23; --surface-2:#1c212c; --line:#262c39;
+  --txt:#eef1f6; --txt-2:#95a0b3; --txt-3:#6b7688;
+  --red:#e23c3c; --gold:#f0b429; --green:#4ade80; --blue:#5b9dff;
+  --r:14px; --pad:16px;
+  --safe-b:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--txt);
+  font:400 15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  padding-bottom:calc(74px + var(--safe-b));
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3{margin:0;font-weight:650;letter-spacing:-.01em}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+input,select,textarea{font:inherit;color:var(--txt);background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:11px 12px;width:100%}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue)}
+input::placeholder{color:var(--txt-3)}
+a{color:var(--blue)}
+
+/* ---------- header ---------- */
+header{
+  position:sticky;top:0;z-index:20;background:rgba(13,16,23,.88);
+  backdrop-filter:saturate(150%) blur(12px);border-bottom:1px solid var(--line);
+  padding:calc(env(safe-area-inset-top,0px) + 14px) var(--pad) 14px;
+  display:flex;align-items:center;gap:12px;
+}
+.logo{width:32px;height:32px;border-radius:9px;flex:none;object-fit:cover;display:block}
+header h1{font-size:17px;flex:1}
+.hbtn{width:36px;height:36px;border-radius:10px;background:var(--surface-2);display:grid;place-items:center;font-size:15px}
+.hbtn:active{background:var(--line)}
+.hbtn.spin svg{animation:sp .9s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+main{padding:var(--pad);max-width:640px;margin:0 auto}
+.view{display:none} .view.on{display:block}
+
+/* ---------- cards ---------- */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:12px}
+.card.deal{border-color:rgba(240,180,41,.45);background:linear-gradient(180deg,rgba(240,180,41,.07),transparent 60%),var(--surface)}
+.card.hit{border-color:rgba(74,222,128,.45);background:linear-gradient(180deg,rgba(74,222,128,.07),transparent 60%),var(--surface)}
+.row{display:flex;align-items:flex-start;gap:12px}
+.grow{flex:1;min-width:0}
+.ttl{font-weight:650;font-size:15.5px;line-height:1.35}
+.sub{color:var(--txt-2);font-size:12.5px;margin-top:3px;word-break:break-word}
+.mono{font-variant-numeric:tabular-nums;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:650;letter-spacing:.04em;
+  text-transform:uppercase;padding:4px 8px;border-radius:999px;white-space:nowrap}
+.b-stock{background:rgba(74,222,128,.15);color:var(--green)}
+.b-deal{background:rgba(240,180,41,.16);color:var(--gold)}
+.b-pre{background:rgba(91,157,255,.14);color:var(--blue)}
+.b-oos{background:var(--surface-2);color:var(--txt-3)}
+.b-off{background:var(--surface-2);color:var(--txt-3)}
+.b-mute{background:rgba(240,180,41,.16);color:var(--gold)}
+
+.caps{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.cap{background:var(--surface-2);border-radius:9px;padding:7px 10px;font-size:12px;color:var(--txt-2)}
+.cap b{color:var(--txt);font-weight:650}
+
+.offers{margin-top:12px;border-top:1px solid var(--line);padding-top:10px;display:grid;gap:2px}
+.offer{display:flex;align-items:center;gap:10px;padding:7px 0;font-size:13.5px;text-decoration:none;color:inherit;border-radius:8px}
+.offer:active{background:var(--surface-2)}
+.offer .m{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--txt-2)}
+.offer .p{font-weight:650;font-variant-numeric:tabular-nums}
+.offer.in .p{color:var(--green)} .offer.in .m{color:var(--txt)}
+.offer.deal .p{color:var(--gold)}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--txt-3);flex:none}
+.offer.in .dot{background:var(--green)} .offer.pre .dot{background:var(--blue)}
+.more{font-size:12.5px;color:var(--txt-3);padding-top:6px;text-align:center}
+
+/* ---------- buttons ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:var(--surface-2);
+  border:1px solid var(--line);border-radius:10px;padding:11px 15px;font-size:14px;font-weight:600}
+.btn:active{transform:scale(.985)}
+.btn.pri{background:var(--red);border-color:var(--red);color:#fff}
+.btn.gold{background:var(--gold);border-color:var(--gold);color:#1a1405}
+.btn.ghost{background:transparent}
+.btn.sm{padding:8px 12px;font-size:13px}
+.btn.wide{width:100%}
+.btn[disabled]{opacity:.5;pointer-events:none}
+.actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+
+/* ---------- tabs ---------- */
+nav{position:fixed;left:0;right:0;bottom:0;z-index:30;background:rgba(13,16,23,.94);
+  backdrop-filter:blur(12px);border-top:1px solid var(--line);
+  display:grid;grid-template-columns:repeat(4,1fr);padding:8px 6px calc(8px + var(--safe-b))}
+nav button{display:grid;justify-items:center;gap:4px;padding:6px 2px;border-radius:10px;
+  font-size:10.5px;font-weight:600;color:var(--txt-3);letter-spacing:.02em}
+nav button.on{color:var(--txt)}
+nav button.on svg{color:var(--red)}
+nav svg{width:21px;height:21px}
+
+/* ---------- forms / sheet ---------- */
+.sheet{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.6);display:none;align-items:flex-end}
+.sheet.on{display:flex}
+.sheet-in{background:var(--surface);width:100%;max-height:92vh;overflow-y:auto;
+  border-radius:20px 20px 0 0;padding:20px var(--pad) calc(28px + var(--safe-b));
+  border-top:1px solid var(--line);animation:up .22s cubic-bezier(.2,.8,.2,1)}
+@media(min-width:640px){.sheet{align-items:center;justify-content:center}
+  .sheet-in{max-width:560px;border-radius:18px;animation:none}}
+@keyframes up{from{transform:translateY(24px);opacity:.4}to{transform:none;opacity:1}}
+.sheet h2{font-size:18px;margin-bottom:4px}
+.field{margin-top:14px}
+.field label{display:block;font-size:12.5px;font-weight:600;color:var(--txt-2);margin-bottom:6px}
+.field .hint{font-size:11.5px;color:var(--txt-3);margin-top:5px;line-height:1.45}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.inline{display:flex;gap:8px}
+.inline input{flex:1}
+
+/* ---------- misc ---------- */
+.empty{text-align:center;padding:48px 20px;color:var(--txt-3)}
+.empty .big{font-size:34px;margin-bottom:12px;opacity:.6}
+.sec{font-size:11.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--txt-3);margin:22px 0 10px}
+.sec:first-child{margin-top:4px}
+.toast{position:fixed;left:50%;bottom:calc(88px + var(--safe-b));transform:translateX(-50%) translateY(12px);
+  background:var(--surface-2);border:1px solid var(--line);border-radius:11px;padding:11px 16px;font-size:13.5px;
+  z-index:60;opacity:0;pointer-events:none;transition:.22s;max-width:88vw;text-align:center}
+.toast.on{opacity:1;transform:translateX(-50%)}
+.toast.err{border-color:var(--red)}
+.sw{position:relative;width:44px;height:26px;border-radius:99px;background:var(--line);flex:none;transition:.18s}
+.sw.on{background:var(--green)}
+.sw::after{content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:.18s}
+.sw.on::after{transform:translateX(18px)}
+#scanwrap{display:none;position:fixed;inset:0;z-index:70;background:#000}
+#scanwrap.on{display:block}
+#scanvid{width:100%;height:100%;object-fit:cover}
+.scan-ui{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}
+.scan-box{width:74vw;max-width:320px;height:34vw;max-height:150px;border:2px solid rgba(255,255,255,.85);border-radius:14px;
+  box-shadow:0 0 0 100vmax rgba(0,0,0,.5)}
+.scan-close{position:absolute;top:calc(env(safe-area-inset-top,0px) + 14px);right:16px;z-index:2;
+  background:rgba(0,0,0,.55);border-radius:10px;padding:10px 14px;font-weight:600;pointer-events:auto}
+.chart{width:100%;height:auto;display:block}
+.legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;font-size:12px;color:var(--txt-2)}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
+.log{font-size:13px;padding:10px 0;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:baseline}
+.log:last-child{border:0}
+.log .t{color:var(--txt-3);font-size:11.5px;white-space:nowrap;font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+
+<header>
+  <img class="logo" src="/icon-192.png" alt="" draggable="false">
+  <h1>TCG Watch</h1>
+  <button class="hbtn" id="btn-scan" title="Lancer une vérification maintenant">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="18" height="18">
+      <path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>
+  </button>
+</header>
+
+<main>
+  <!-- ================= ALERTES ================= -->
+  <section class="view on" id="v-alerts">
+    <div id="products"></div>
+    <button class="btn pri wide" id="btn-add" style="margin-top:4px">+ Nouvelle alerte</button>
+  </section>
+
+  <!-- ================= HISTORIQUE ================= -->
+  <section class="view" id="v-history">
+    <div class="field" style="margin:0 0 14px">
+      <label for="h-product">Produit</label>
+      <select id="h-product"></select>
+    </div>
+    <div class="card" id="h-card"><div class="empty">Choisis un produit</div></div>
+    <div id="h-stats"></div>
+  </section>
+
+  <!-- ================= MARCHANDS ================= -->
+  <section class="view" id="v-merchants">
+    <div id="merchants"></div>
+    <button class="btn wide" id="btn-add-merchant" style="margin-top:4px">+ Ajouter une boutique</button>
+  </section>
+
+  <!-- ================= JOURNAL ================= -->
+  <section class="view" id="v-log">
+    <div class="sec">Notifications</div>
+    <div class="card" id="push-card"></div>
+    <div class="sec">Alertes envoyées</div>
+    <div class="card" id="log-alerts"><div class="empty">Rien pour l'instant</div></div>
+    <div class="sec">État du service</div>
+    <div class="card" id="log-status"></div>
+  </section>
+</main>
+
+<nav>
+  <button data-view="alerts" class="on">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+    Alertes
+  </button>
+  <button data-view="history">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+    Prix
+  </button>
+  <button data-view="merchants">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9h18l-1.5 11a2 2 0 0 1-2 1.8H6.5a2 2 0 0 1-2-1.8Z"/><path d="M3 9l2-5h14l2 5"/><path d="M9 13v4M15 13v4"/></svg>
+    Boutiques
+  </button>
+  <button data-view="log">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>
+    Journal
+  </button>
+</nav>
+
+<!-- ================= SHEETS ================= -->
+<div class="sheet" id="sheet"><div class="sheet-in" id="sheet-in"></div></div>
+
+<!-- ================= SCANNER ================= -->
+<div id="scanwrap">
+  <video id="scanvid" playsinline muted autoplay></video>
+  <div class="scan-ui"><div class="scan-box"></div></div>
+  <button class="scan-close" id="scan-close">Fermer</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+/* =========================================================================
+   TCG Watch — PWA
+   Toute la logique de veille tourne cote serveur (Cloudflare Worker + cron).
+   Cette interface ne fait que lire et ecrire la configuration.
+   ========================================================================= */
+
+const KEY_TOKEN = 'tcgwatch.token';
+const state = { products: [], merchants: [], latest: [], alerts: [], health: [], mail: false, push: false, vapid: null, devices: null, view: 'alerts' };
+
+const $  = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const eur = (n) => n == null ? '—' : new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(n);
+const store = {
+  get(k){ try { return localStorage.getItem(k); } catch { return null; } },
+  set(k,v){ try { localStorage.setItem(k,v); } catch {} },
+};
+
+let toastTimer;
+function toast(msg, isErr) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.toggle('err', !!isErr);
+  t.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('on'), 3200);
+}
+
+// ---------- API ----------
+async function api(path, opts = {}) {
+  const headers = { 'content-type': 'application/json' };
+  const token = store.get(KEY_TOKEN);
+  if (token) headers['x-app-token'] = token;
+  const res = await fetch('/api' + path, { ...opts, headers: { ...headers, ...(opts.headers || {}) } });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'erreur ' + res.status);
+  return data;
+}
+
+// ---------- rendu : liste des alertes ----------
+function offersFor(productId) {
+  return state.latest.filter((o) => o.product_id === productId);
+}
+function bestOffer(product) {
+  const inStock = offersFor(product.id)
+    .filter((o) => o.status === 'in_stock' && o.price != null && o.price <= product.price_max && o.price >= (product.price_min || 0))
+    .sort((a, b) => a.price - b.price);
+  return inStock[0] || null;
+}
+
+function renderProducts() {
+  const host = $('#products');
+  if (!state.products.length) {
+    host.innerHTML = `<div class="empty"><div class="big">🎴</div>
+      Aucune alerte pour l'instant.<br>Ajoute un produit par son code EAN ou son nom.</div>`;
+    return;
+  }
+  host.innerHTML = state.products.map((p) => {
+    const best = bestOffer(p);
+    const isDeal = best && p.price_deal != null && best.price <= p.price_deal;
+    const offers = offersFor(p.id).sort((a, b) => {
+      const rank = (o) => (o.status === 'in_stock' ? 0 : o.status === 'preorder' ? 1 : 2);
+      return rank(a) - rank(b) || ((a.price ?? 1e9) - (b.price ?? 1e9));
+    });
+    const shown = offers.slice(0, 5);
+
+    const badge = !p.active
+      ? '<span class="badge b-off">en pause</span>'
+      : isDeal ? '<span class="badge b-deal">🔥 bonne affaire</span>'
+      : best ? '<span class="badge b-stock">en stock</span>'
+      : offers.some((o) => o.status === 'preorder') ? '<span class="badge b-pre">précommande</span>'
+      : '<span class="badge b-oos">pas de stock</span>';
+
+    return `<div class="card ${isDeal ? 'deal' : best ? 'hit' : ''}">
+      <div class="row">
+        <div class="grow">
+          <div class="ttl">${esc(p.label)}</div>
+          <div class="sub">${p.ean ? '<span class="mono">' + esc(p.ean) + '</span>' : esc(p.query || '')}</div>
+        </div>
+        ${badge}
+      </div>
+      <div class="caps">
+        <div class="cap">max <b>${eur(p.price_max)}</b></div>
+        ${p.price_deal != null ? `<div class="cap">bonne affaire <b>≤ ${eur(p.price_deal)}</b></div>` : ''}
+        <div class="cap">→ <b>${esc(p.email)}</b></div>
+      </div>
+      ${shown.length ? `<div class="offers">${shown.map((o) => {
+        // en stock mais au-dessus du plafond : ce n'est pas une bonne nouvelle,
+        // on l'affiche en neutre pour ne pas faire croire a une trouvaille.
+        const overCap = o.status === 'in_stock' && o.price != null && o.price > p.price_max;
+        const cls = overCap ? '' : o.status === 'in_stock' ? (isDeal && o.price === best?.price ? 'in deal' : 'in') : o.status === 'preorder' ? 'pre' : '';
+        const label = overCap ? ' · hors plafond' : o.status === 'in_stock' ? '' : o.status === 'preorder' ? ' · précommande' : o.status === 'oos' ? ' · rupture' : ' · non trouvé';
+        const price = o.price != null ? eur(o.price) : '—';
+        return o.url
+          ? `<a class="offer ${cls}" href="${esc(o.url)}" target="_blank" rel="noopener">
+               <span class="dot"></span><span class="m">${esc(o.merchant_name)}${label}</span><span class="p">${price}</span></a>`
+          : `<div class="offer ${cls}"><span class="dot"></span><span class="m">${esc(o.merchant_name)}${label}</span><span class="p">${price}</span></div>`;
+      }).join('')}${offers.length > shown.length ? `<div class="more">+ ${offers.length - shown.length} autres boutiques vérifiées</div>` : ''}</div>` : ''}
+      <div class="actions">
+        <button class="btn sm" data-edit="${p.id}">Modifier</button>
+        <button class="btn sm" data-check="${p.id}">Vérifier</button>
+        <button class="btn sm ghost" data-toggle="${p.id}">${p.active ? 'Mettre en pause' : 'Réactiver'}</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ---------- rendu : marchands ----------
+// Une boutique interrogee souvent et qui ne remonte jamais rien n'est pas
+// « en rupture » : elle est mal configuree. On le dit plutot que de laisser
+// croire a une absence de stock.
+const health = (id) => (state.health || []).find((h) => h.merchant_id === id) || {};
+const muette = (id) => {
+  const h = health(id);
+  return (h.interrogations || 0) >= 6 && (h.trouvailles || 0) === 0;
+};
+
+function renderMerchants() {
+  const groups = [
+    ['Vérifiés en priorité', state.merchants.filter((m) => m.priority <= 2)],
+    ['Boutiques spécialisées', state.merchants.filter((m) => m.priority > 2)],
+  ];
+  const nbMuettes = state.merchants.filter((m) => m.enabled && muette(m.id)).length;
+  const banniere = nbMuettes ? `
+    <div class="card" style="border-color:rgba(240,180,41,.45)">
+      <div class="ttl">${nbMuettes} boutique${nbMuettes > 1 ? 's' : ''} muette${nbMuettes > 1 ? 's' : ''}</div>
+      <div class="sub">Leur URL de recherche est probablement fausse. L'app peut la retrouver
+        toute seule en lisant le formulaire de recherche de chaque site.</div>
+      <div class="actions"><button class="btn gold wide" id="m-repair">🔧 Réparer automatiquement</button></div>
+    </div>` : '';
+
+  $('#merchants').innerHTML = banniere + groups.map(([title, list]) => !list.length ? '' : `
+    <div class="sec">${title}</div>
+    <div class="card" style="padding:6px 16px">
+      ${list.map((m) => `
+        <div class="row" style="align-items:center;padding:11px 0;border-bottom:1px solid var(--line)">
+          <div class="grow">
+            <div class="ttl" style="font-size:14.5px">${esc(m.name)}${muette(m.id) ? ' <span class="badge b-mute">muette</span>' : ''}</div>
+            <div class="sub mono">${esc(m.domain)}</div>
+            ${muette(m.id) ? `<div class="sub" style="color:var(--gold)">Interrogée ${health(m.id).interrogations} fois sans jamais rien trouver — son URL de recherche est probablement fausse.</div>` : ''}
+          </div>
+          <button class="btn sm ghost" data-edit-merchant="${m.id}">⋯</button>
+          <div class="sw ${m.enabled ? 'on' : ''}" data-toggle-merchant="${m.id}"></div>
+        </div>`).join('')}
+    </div>`).join('') + `<div class="sub" style="margin:8px 2px 16px">
+      La recherche se fait d'abord par code EAN, puis par nom de produit. Une boutique marquée
+      <b>muette</b> n'est pas en rupture : son URL de recherche est fausse. Corrige-la avec ⋯ —
+      fais une recherche sur leur site, copie l'adresse obtenue, et remplace ton texte par {q}.</div>`;
+}
+
+// ---------- rendu : journal ----------
+// Reparation groupee. Le plan gratuit limite les requetes par passage : on
+// repare par paquets de 4, en indiquant ce qu'il reste.
+async function repairMerchants(btn) {
+  btn.disabled = true;
+  btn.textContent = 'Analyse des sites…';
+  try {
+    const r = await api('/merchants/repair', { method: 'POST', body: '{}' });
+    const detail = r.resultats.map((x) => `${x.ok ? '✓' : '✗'} ${x.boutique}`).join(' · ');
+    toast(`${r.reparees} réparée(s), ${r.echecs} sans solution${r.restantes ? ` — ${r.restantes} restante(s)` : ''}\n${detail}`);
+    await load();
+  } catch (e) { toast(e.message, true); }
+  btn.disabled = false;
+  btn.textContent = '🔧 Réparer automatiquement';
+}
+
+function renderLog() {
+  const a = state.alerts;
+  $('#log-alerts').innerHTML = !a.length
+    ? '<div class="empty">Aucune alerte envoyée pour le moment.<br>C\'est normal tant que rien n\'est en stock.</div>'
+    : a.map((x) => `<div class="log">
+        <span class="t">${new Date(x.sent_at.replace(' ', 'T') + 'Z').toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+        <span class="grow">${x.tier === 'deal' ? '🔥 ' : ''}${esc(x.product_label)} — <b>${eur(x.price)}</b> chez ${esc(x.merchant_name)}
+          ${x.emailed ? '' : ` <span style="color:var(--red)" title="${esc(x.mail_error || 'raison inconnue')}">(mail non envoyé : ${esc(x.mail_error || 'raison inconnue')})</span>`}</span>
+      </div>`).join('');
+
+  const active = state.products.filter((p) => p.active).length;
+  const on = state.merchants.filter((m) => m.enabled).length;
+  $('#log-status').innerHTML = `
+    <div class="log"><span class="grow">Produits surveillés</span><b>${active}</b></div>
+    <div class="log"><span class="grow">Boutiques actives</span><b>${on}</b></div>
+    <div class="log"><span class="grow">Envoi des mails</span><b style="color:${state.mail ? 'var(--green)' : 'var(--red)'}">${state.mail ? 'configuré' : 'à configurer'}</b></div>
+    <div class="log"><span class="grow">Vérifications</span><b>toutes les 5 min</b></div>
+    ${state.mail
+      ? `<div class="actions"><button class="btn sm" id="m-test">Tester l'envoi d'un mail</button></div>`
+      : `<div class="sub" style="padding-top:10px">Ajoute ta clé Resend côté serveur :
+      <span class="mono">netlify env:set RESEND_API_KEY "ta_clé"</span></div>`}`;
+
+  const mt = $('#m-test');
+  if (mt) mt.onclick = async function () {
+    this.disabled = true; this.textContent = 'Envoi…';
+    try {
+      const r = await api('/mail/test', { method: 'POST', body: '{}' });
+      toast(r.ok ? `Mail de test envoyé à ${r.to}` : `Refusé : ${r.error}`, !r.ok);
+    } catch (e) { toast(e.message, true); }
+    this.disabled = false; this.textContent = "Tester l'envoi d'un mail";
+  };
+}
+
+// ---------- historique / graphique ----------
+function renderHistorySelect() {
+  const sel = $('#h-product');
+  const cur = sel.value;
+  sel.innerHTML = state.products.map((p) => `<option value="${p.id}">${esc(p.label)}</option>`).join('');
+  if (cur) sel.value = cur;
+}
+
+async function drawHistory() {
+  const id = Number($('#h-product').value);
+  const product = state.products.find((p) => p.id === id);
+  const card = $('#h-card');
+  if (!product) { card.innerHTML = '<div class="empty">Choisis un produit</div>'; return; }
+  card.innerHTML = '<div class="empty">Chargement…</div>';
+
+  let points = [];
+  try { points = (await api('/history?product_id=' + id + '&days=90')).points || []; }
+  catch (e) { card.innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+
+  if (points.length < 2) {
+    card.innerHTML = `<div class="empty"><div class="big">📈</div>
+      Pas encore assez de relevés.<br>Le graphique se remplit tout seul au fil des vérifications.</div>`;
+    $('#h-stats').innerHTML = '';
+    return;
+  }
+
+  // les 4 boutiques les mieux renseignees
+  const byMerchant = new Map();
+  for (const p of points) {
+    if (!byMerchant.has(p.merchant_name)) byMerchant.set(p.merchant_name, []);
+    byMerchant.get(p.merchant_name).push({ t: Date.parse(p.checked_at.replace(' ', 'T') + 'Z'), v: p.price });
+  }
+  const series = [...byMerchant.entries()].sort((a, b) => b[1].length - a[1].length).slice(0, 4);
+  const COLORS = ['#5b9dff', '#f0b429', '#4ade80', '#e879f9'];
+
+  const all = points.map((p) => p.price);
+  const times = points.map((p) => Date.parse(p.checked_at.replace(' ', 'T') + 'Z'));
+  const t0 = Math.min(...times), t1 = Math.max(...times);
+  let lo = Math.min(...all, product.price_deal ?? Infinity, product.price_max);
+  let hi = Math.max(...all, product.price_max);
+  const pad = (hi - lo) * 0.12 || 1;
+  lo -= pad; hi += pad;
+
+  const W = 600, H = 190, ML = 46, MR = 10, MT = 12, MB = 24;
+  const x = (t) => ML + ((t - t0) / Math.max(1, t1 - t0)) * (W - ML - MR);
+  const y = (v) => MT + (1 - (v - lo) / Math.max(0.001, hi - lo)) * (H - MT - MB);
+
+  const gridVals = [lo + (hi - lo) * 0.05, (lo + hi) / 2, hi - (hi - lo) * 0.05];
+  const grid = gridVals.map((v) => `
+    <line x1="${ML}" x2="${W - MR}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="#262c39" stroke-width="1"/>
+    <text x="${ML - 7}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end" fill="#6b7688" font-size="10">${Math.round(v)} €</text>`).join('');
+
+  const capLine = (v, color, label) => v == null ? '' : `
+    <line x1="${ML}" x2="${W - MR}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="${color}" stroke-width="1.3" stroke-dasharray="5 4" opacity=".75"/>
+    <text x="${W - MR}" y="${(y(v) - 5).toFixed(1)}" text-anchor="end" fill="${color}" font-size="10" font-weight="600">${label}</text>`;
+
+  const paths = series.map(([name, pts], i) => {
+    pts.sort((a, b) => a.t - b.t);
+    const d = pts.map((p, j) => `${j ? 'L' : 'M'}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`).join(' ');
+    const last = pts[pts.length - 1];
+    return `<path d="${d}" fill="none" stroke="${COLORS[i]}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+            <circle cx="${x(last.t).toFixed(1)}" cy="${y(last.v).toFixed(1)}" r="3.2" fill="${COLORS[i]}"/>`;
+  }).join('');
+
+  const fmtD = (t) => new Date(t).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
+
+  card.innerHTML = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img"
+      aria-label="Évolution du prix de ${esc(product.label)}">
+      ${grid}
+      ${capLine(product.price_max, '#e23c3c', 'plafond')}
+      ${capLine(product.price_deal, '#f0b429', 'bonne affaire')}
+      ${paths}
+      <text x="${ML}" y="${H - 6}" fill="#6b7688" font-size="10">${fmtD(t0)}</text>
+      <text x="${W - MR}" y="${H - 6}" text-anchor="end" fill="#6b7688" font-size="10">${fmtD(t1)}</text>
+    </svg>
+    <div class="legend">${series.map(([n], i) => `<span><i style="background:${COLORS[i]}"></i>${esc(n)}</span>`).join('')}</div>`;
+
+  const min = Math.min(...all), max = Math.max(...all);
+  const lastSeen = points.filter((p) => p.status === 'in_stock').slice(-1)[0];
+  $('#h-stats').innerHTML = `<div class="card"><div class="caps" style="margin:0">
+      <div class="cap">plus bas vu <b>${eur(min)}</b></div>
+      <div class="cap">plus haut <b>${eur(max)}</b></div>
+      <div class="cap">relevés <b>${points.length}</b></div>
+      ${lastSeen ? `<div class="cap">dernier stock <b>${new Date(lastSeen.checked_at.replace(' ', 'T') + 'Z').toLocaleDateString('fr-FR')}</b></div>` : ''}
+    </div></div>`;
+}
+
+// ---------- formulaire produit ----------
+function openProductSheet(product) {
+  const p = product || {};
+  const isNew = !product;
+  $('#sheet-in').innerHTML = `
+    <h2>${isNew ? 'Nouvelle alerte' : 'Modifier l\'alerte'}</h2>
+    <div class="sub">Un code EAN suffit. Un nom de produit marche aussi, en moins précis.</div>
+
+    <div class="field">
+      <label>Nom affiché</label>
+      <input id="f-label" value="${esc(p.label || '')}" placeholder="Display 24 boosters OP-17">
+    </div>
+
+    <div class="field">
+      <label>Code EAN</label>
+      <div class="inline">
+        <input id="f-ean" class="mono" inputmode="numeric" value="${esc(p.ean || '')}" placeholder="4582770058727">
+        <button class="btn" id="f-scan" title="Scanner le code-barres">📷</button>
+      </div>
+      <div class="hint">Le plus fiable : c'est ce que les boutiques indexent.</div>
+      ${isNew ? '' : `<button class="btn sm wide" id="f-findean" style="margin-top:8px">🔎 Trouver l'EAN automatiquement</button>`}
+    </div>
+
+    <div class="field">
+      <label>Ou nom à rechercher</label>
+      <input id="f-query" value="${esc(p.query || '')}" placeholder="One Piece Card Game OP-17 display FR">
+      <div class="hint">Utilisé si l'EAN ne donne rien. Mets la langue (FR) pour éviter les versions japonaises.</div>
+    </div>
+
+    <div class="field">
+      <label>Fourchette de prix</label>
+      <div class="three">
+        <input id="f-min" inputmode="decimal" value="${p.price_min ?? ''}" placeholder="min €">
+        <input id="f-max" inputmode="decimal" value="${p.price_max ?? ''}" placeholder="max €">
+        <input id="f-deal" inputmode="decimal" value="${p.price_deal ?? ''}" placeholder="affaire €">
+      </div>
+      <div class="hint"><b>max</b> : au-dessus, pas d'alerte. <b>affaire</b> : alerte prioritaire en dessous.
+        <b>min</b> : garde-fou, sous ce prix c'est une erreur d'affichage ou une arnaque.</div>
+    </div>
+
+    <div class="field">
+      <label>Email d'alerte</label>
+      <input id="f-email" type="email" inputmode="email" value="${esc(p.email || state.products[0]?.email || '')}" placeholder="toi@exemple.fr">
+    </div>
+
+    <div class="field">
+      <label>Ne pas me réalerter pendant</label>
+      <select id="f-cool">
+        ${[1, 3, 6, 12, 24, 48].map((h) => `<option value="${h}" ${(p.cooldown_hours ?? 12) === h ? 'selected' : ''}>${h} h</option>`).join('')}
+      </select>
+      <div class="hint">Une baisse de prix ou une bonne affaire passe outre ce délai.</div>
+    </div>
+
+    <div class="actions" style="margin-top:20px">
+      <button class="btn pri grow" id="f-save" style="flex:1">${isNew ? 'Créer l\'alerte' : 'Enregistrer'}</button>
+      <button class="btn ghost" id="f-cancel">Annuler</button>
+    </div>
+    ${isNew ? '' : `<button class="btn ghost wide" id="f-del" style="margin-top:10px;color:var(--red)">Supprimer cette alerte</button>`}`;
+
+  $('#sheet').classList.add('on');
+  $('#f-cancel').onclick = closeSheet;
+  $('#f-scan').onclick = () => startScan((code) => { $('#f-ean').value = code; toast('Code lu : ' + code); });
+
+  // L'app cherche le produit chez les boutiques et lit le code-barres declare
+  // sur la fiche trouvee. C'est ainsi que l'EAN du coffret Zygarde a ete
+  // retrouve : il etait dans les donnees de la fiche Pikastore.
+  const fe = $('#f-findean');
+  if (fe) fe.onclick = async function () {
+    const nom = $('#f-query').value.trim() || $('#f-label').value.trim();
+    if (!nom) return toast("Renseigne d'abord un nom à rechercher", true);
+    this.disabled = true; this.textContent = 'Recherche en cours…';
+    try {
+      const r = await api(`/products/${p.id}/find-ean`, { method: 'POST', body: '{}' });
+      if (r.ok) {
+        $('#f-ean').value = r.ean;
+        const ou = r.sources.map((x) => x.boutique).join(', ');
+        toast(`EAN ${r.ean} trouvé chez ${ou}`);
+      } else {
+        toast('Aucun code-barres trouvé — précise le nom de recherche', true);
+      }
+    } catch (e) { toast(e.message, true); }
+    this.disabled = false; this.textContent = "🔎 Trouver l'EAN automatiquement";
+  };
+
+  $('#f-save').onclick = async () => {
+    const payload = {
+      label: $('#f-label').value.trim(),
+      ean: $('#f-ean').value.replace(/\D/g, ''),
+      query: $('#f-query').value.trim(),
+      price_min: $('#f-min').value.replace(',', '.'),
+      price_max: $('#f-max').value.replace(',', '.'),
+      price_deal: $('#f-deal').value.replace(',', '.'),
+      email: $('#f-email').value.trim(),
+      cooldown_hours: $('#f-cool').value,
+    };
+    if (!payload.label) return toast('Il manque le nom affiché', true);
+    if (!payload.ean && !payload.query) return toast('Il faut un EAN ou un nom à rechercher', true);
+    if (!payload.email) return toast("Il manque l'email d'alerte", true);
+    if (!payload.price_max) return toast('Il manque le prix maximum', true);
+    try {
+      if (isNew) await api('/products', { method: 'POST', body: JSON.stringify(payload) });
+      else await api('/products/' + p.id, { method: 'PATCH', body: JSON.stringify(payload) });
+      closeSheet();
+      await load();
+      toast(isNew ? 'Alerte créée' : 'Alerte enregistrée');
+    } catch (e) { toast(e.message, true); }
+  };
+
+  if (!isNew) $('#f-del').onclick = async () => {
+    if (!confirm('Supprimer « ' + p.label + ' » et tout son historique ?')) return;
+    try { await api('/products/' + p.id, { method: 'DELETE' }); closeSheet(); await load(); toast('Alerte supprimée'); }
+    catch (e) { toast(e.message, true); }
+  };
+}
+
+// ---------- formulaire marchand ----------
+function openMerchantSheet(merchant) {
+  const m = merchant || {};
+  const isNew = !merchant;
+  $('#sheet-in').innerHTML = `
+    <h2>${isNew ? 'Ajouter une boutique' : esc(m.name)}</h2>
+    <div class="sub">Aucun code à écrire : donne l'URL de recherche du site.</div>
+    <div class="field"><label>Nom</label><input id="m-name" value="${esc(m.name || '')}" placeholder="Ma boutique"></div>
+    <div class="field">
+      <label>URL de recherche</label>
+      <input id="m-url" class="mono" value="${esc(m.search_url || '')}" placeholder="https://boutique.fr/recherche?q={q}">
+      <div class="hint">Fais une recherche sur le site, copie l'URL, et remplace ce que tu as tapé par <b>{q}</b>.</div>
+      ${isNew ? '' : `<button class="btn sm wide" id="m-detect" style="margin-top:8px">🔧 Détecter l'URL automatiquement</button>`}
+    </div>
+    <div class="field"><label>Priorité</label>
+      <select id="m-prio">${[1,2,3,4,5].map((n)=>`<option value="${n}" ${(m.priority??5)===n?'selected':''}>${n} — ${n<=2?'vérifié en premier':n<=3?'normal':'en dernier'}</option>`).join('')}</select>
+    </div>
+    <div class="actions" style="margin-top:20px">
+      <button class="btn pri" id="m-save" style="flex:1">${isNew ? 'Ajouter' : 'Enregistrer'}</button>
+      <button class="btn ghost" id="m-cancel">Annuler</button>
+    </div>
+    ${isNew ? '' : `<button class="btn ghost wide" id="m-del" style="margin-top:10px;color:var(--red)">Retirer cette boutique</button>`}`;
+
+  $('#sheet').classList.add('on');
+  $('#m-cancel').onclick = closeSheet;
+
+  // L'app lit le formulaire de recherche du site lui-meme, puis met l'URL
+  // trouvee a l'epreuve avec un vrai produit avant de l'enregistrer.
+  const md = $('#m-detect');
+  if (md) md.onclick = async function () {
+    this.disabled = true; this.textContent = 'Analyse du site…';
+    try {
+      const r = await api(`/merchants/${m.id}/detect`, { method: 'POST', body: '{}' });
+      if (r.ok) {
+        $('#m-url').value = r.url;
+        toast(`URL trouvée via le ${r.source}`);
+        load();
+      } else {
+        toast('Aucune URL de recherche exploitable sur ce site', true);
+      }
+    } catch (e) { toast(e.message, true); }
+    this.disabled = false; this.textContent = "🔧 Détecter l'URL automatiquement";
+  };
+
+  $('#m-save').onclick = async () => {
+    const payload = { name: $('#m-name').value.trim(), search_url: $('#m-url').value.trim(), priority: $('#m-prio').value };
+    if (!payload.search_url.includes('{q}')) return toast("L'URL doit contenir {q}", true);
+    try {
+      if (isNew) await api('/merchants', { method: 'POST', body: JSON.stringify(payload) });
+      else await api('/merchants/' + m.id, { method: 'PATCH', body: JSON.stringify(payload) });
+      closeSheet(); await load(); toast('Boutique enregistrée');
+    } catch (e) { toast(e.message, true); }
+  };
+  if (!isNew) $('#m-del').onclick = async () => {
+    if (!confirm('Retirer ' + m.name + ' ?')) return;
+    try { await api('/merchants/' + m.id, { method: 'DELETE' }); closeSheet(); await load(); toast('Boutique retirée'); }
+    catch (e) { toast(e.message, true); }
+  };
+}
+
+function openTokenSheet() {
+  $('#sheet-in').innerHTML = `
+    <h2>Mot de passe de l'app</h2>
+    <div class="sub">Celui que tu as défini côté serveur avec <span class="mono">netlify env:set APP_TOKEN "ton_mot_de_passe"</span>.</div>
+    <div class="field"><input id="t-val" type="password" value="${esc(store.get(KEY_TOKEN) || '')}" placeholder="••••••••"></div>
+    <div class="actions" style="margin-top:18px">
+      <button class="btn pri" id="t-save" style="flex:1">Valider</button>
+    </div>`;
+  $('#sheet').classList.add('on');
+  $('#t-save').onclick = async () => {
+    store.set(KEY_TOKEN, $('#t-val').value.trim());
+    closeSheet();
+    await load();
+  };
+}
+
+const closeSheet = () => $('#sheet').classList.remove('on');
+$('#sheet').addEventListener('click', (e) => { if (e.target.id === 'sheet') closeSheet(); });
+
+// ---------- scanner de code-barres ----------
+let scanStream = null, scanStop = null;
+async function startScan(onCode) {
+  const wrap = $('#scanwrap'), vid = $('#scanvid');
+  try {
+    scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+  } catch {
+    return toast("Accès caméra refusé — saisis le code à la main", true);
+  }
+  vid.srcObject = scanStream;
+  wrap.classList.add('on');
+  await vid.play().catch(() => {});
+
+  const finish = (code) => { stopScan(); if (code) onCode(String(code).replace(/\D/g, '')); };
+
+  // 1) API native du navigateur (Android Chrome, Edge)
+  if ('BarcodeDetector' in window) {
+    try {
+      const det = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] });
+      const tick = async () => {
+        if (!scanStream) return;
+        try {
+          const codes = await det.detect(vid);
+          if (codes && codes.length) return finish(codes[0].rawValue);
+        } catch {}
+        scanStop = requestAnimationFrame(tick);
+      };
+      tick();
+      return;
+    } catch {}
+  }
+
+  // 2) repli ZXing (iOS Safari, qui n'a pas BarcodeDetector)
+  try {
+    if (!window.ZXingBrowser) {
+      await new Promise((ok, ko) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/zxing-browser.min.js';
+        s.onload = ok; s.onerror = ko;
+        document.head.appendChild(s);
+      });
+    }
+    const reader = new window.ZXingBrowser.BrowserMultiFormatReader();
+    const ctl = await reader.decodeFromVideoElement(vid, (result) => { if (result) finish(result.getText()); });
+    scanStop = () => ctl.stop();
+  } catch {
+    stopScan();
+    toast('Scanner indisponible sur ce navigateur — saisis le code à la main', true);
+  }
+}
+function stopScan() {
+  if (typeof scanStop === 'function') scanStop();
+  else if (scanStop) cancelAnimationFrame(scanStop);
+  scanStop = null;
+  if (scanStream) { scanStream.getTracks().forEach((t) => t.stop()); scanStream = null; }
+  $('#scanwrap').classList.remove('on');
+}
+$('#scan-close').onclick = stopScan;
+
+// ---------- son de lame ----------
+// iOS n'autorise la lecture audio qu'apres un geste de l'utilisateur. Ouvrir
+// une notification n'en est pas toujours un : si la lecture est refusee, on
+// arme le son sur la premiere touche de l'ecran plutot que de l'abandonner.
+let swordAudio = null, swordPending = false;
+
+function primeSword() {
+  if (!swordAudio) { swordAudio = new Audio('/sword.mp3'); swordAudio.preload = 'auto'; }
+  return swordAudio;
+}
+async function playSword() {
+  const a = primeSword();
+  try {
+    a.currentTime = 0;
+    await a.play();
+    swordPending = false;
+    return true;
+  } catch {
+    if (!swordPending) {
+      swordPending = true;
+      document.addEventListener('pointerdown', function once() {
+        document.removeEventListener('pointerdown', once);
+        if (swordPending) { swordPending = false; primeSword().play().catch(() => {}); }
+      }, { once: true });
+      toast('🗡️ Touche l\'écran pour entendre l\'alerte');
+    }
+    return false;
+  }
+}
+
+// ---------- notifications push ----------
+function urlB64ToBytes(b64) {
+  const pad = '='.repeat((4 - (b64.length % 4)) % 4);
+  const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+}
+
+const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent);
+const isStandalone = () =>
+  window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+
+async function currentSub() {
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    return await reg.pushManager.getSubscription();
+  } catch { return null; }
+}
+
+async function enablePush() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window))
+    return toast('Ce navigateur ne gère pas les notifications', true);
+  // Sur iPhone, le push n'existe que dans une app ajoutée à l'écran d'accueil.
+  if (isIOS() && !isStandalone())
+    return toast("Sur iPhone : Partager → Sur l'écran d'accueil, puis reviens ici", true);
+  if (!state.vapid) return toast('Clé VAPID absente côté serveur', true);
+
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted')
+    return toast(perm === 'denied' ? 'Notifications bloquées dans les réglages du téléphone' : 'Autorisation non accordée', true);
+
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlB64ToBytes(state.vapid),
+    });
+    const j = sub.toJSON();
+    const r = await api('/push/subscribe', {
+      method: 'POST',
+      body: JSON.stringify({ endpoint: j.endpoint, keys: j.keys }),
+    });
+    toast(`Notifications activées (${r.devices} appareil${r.devices > 1 ? 's' : ''})`);
+    renderPush();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function disablePush() {
+  const sub = await currentSub();
+  if (!sub) return renderPush();
+  try {
+    await api('/push/unsubscribe', { method: 'POST', body: JSON.stringify({ endpoint: sub.endpoint }) });
+    await sub.unsubscribe();
+    toast('Notifications désactivées');
+  } catch (e) { toast(e.message, true); }
+  renderPush();
+}
+
+async function renderPush() {
+  const host = $('#push-card');
+  if (!host) return;
+  const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  const perm = 'Notification' in window ? Notification.permission : 'unsupported';
+  const sub = supported ? await currentSub() : null;
+
+  if (isIOS() && !isStandalone()) {
+    host.innerHTML = `<div class="empty" style="padding:26px 16px">
+      <div class="big">📲</div>
+      Ajoute d'abord l'app à ton écran d'accueil.<br>
+      <span style="font-size:12.5px">Bouton <b>Partager</b> en bas de Safari → <b>Sur l'écran d'accueil</b>.
+      iOS n'autorise les notifications que dans une app installée.</span></div>`;
+    return;
+  }
+  if (!supported || !state.push) {
+    host.innerHTML = `<div class="empty" style="padding:26px 16px">
+      ${supported ? 'Le serveur n\'a pas de clé VAPID configurée.' : 'Ce navigateur ne gère pas les notifications push.'}</div>`;
+    return;
+  }
+
+  host.innerHTML = `
+    <div class="log"><span class="grow">Notifications sur cet appareil</span>
+      <b style="color:${sub ? 'var(--green)' : 'var(--txt-3)'}">${sub ? 'activées' : 'désactivées'}</b></div>
+    <div class="log"><span class="grow">Appareils abonnés</span><b>${state.devices ?? '—'}</b></div>
+    <div class="actions">
+      ${sub
+        ? `<button class="btn sm" id="p-test">Envoyer un test</button>
+           <button class="btn sm" id="p-sound">🗡️ Écouter le son</button>
+           <button class="btn sm ghost" id="p-off" style="color:var(--txt-3)">Désactiver</button>`
+        : `<button class="btn pri wide" id="p-on">Activer les notifications</button>`}
+    </div>
+    ${perm === 'denied' ? `<div class="sub" style="padding-top:10px;color:var(--red)">
+      Les notifications sont bloquées pour ce site dans les réglages de ton téléphone. Il faut les réautoriser là-bas.</div>` : ''}
+    <div class="sub" style="padding-top:10px">
+      Le son de lame est joué quand tu ouvres l'alerte, ou en direct si l'app est ouverte.
+      Téléphone verrouillé, iOS impose son propre son de notification.</div>`;
+
+  $('#p-on') && ($('#p-on').onclick = enablePush);
+  $('#p-off') && ($('#p-off').onclick = disablePush);
+  $('#p-sound') && ($('#p-sound').onclick = () => playSword());
+  $('#p-test') && ($('#p-test').onclick = async function () {
+    this.disabled = true; this.textContent = 'Envoi…';
+    try {
+      const r = await api('/push/test', { method: 'POST', body: '{}' });
+      toast(r.sent ? `Test envoyé sur ${r.sent} appareil${r.sent > 1 ? 's' : ''}` : 'Aucun appareil abonné', !r.sent);
+    } catch (e) { toast(e.message, true); }
+    renderPush();
+  });
+}
+
+// ---------- chargement ----------
+async function load() {
+  try {
+    const data = await api('/bootstrap');
+    state.products = data.products;
+    state.merchants = data.merchants;
+    state.latest = data.latest;
+    state.alerts = data.alerts;
+    state.mail = data.mail_configured;
+    state.devices = data.push_devices;
+    state.health = data.merchant_health || [];
+    renderProducts(); renderMerchants(); renderLog(); renderHistorySelect(); renderPush();
+    if (state.view === 'history') drawHistory();
+  } catch (e) {
+    if (/401|token/i.test(e.message)) return openTokenSheet();
+    toast(e.message, true);
+  }
+}
+
+// ---------- interactions ----------
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('#m-repair,[data-edit],[data-check],[data-toggle],[data-edit-merchant],[data-toggle-merchant]');
+  if (!t) return;
+
+  if (t.dataset.edit) return openProductSheet(state.products.find((p) => p.id === +t.dataset.edit));
+  if (t.dataset.editMerchant) return openMerchantSheet(state.merchants.find((m) => m.id === +t.dataset.editMerchant));
+
+  if (t.dataset.toggle) {
+    const p = state.products.find((x) => x.id === +t.dataset.toggle);
+    return api('/products/' + p.id, { method: 'PATCH', body: JSON.stringify({ active: p.active ? 0 : 1 }) })
+      .then(load).catch((err) => toast(err.message, true));
+  }
+  if (t.id === 'm-repair') return repairMerchants(t);
+  if (t.dataset.toggleMerchant) {
+    const m = state.merchants.find((x) => x.id === +t.dataset.toggleMerchant);
+    t.classList.toggle('on');
+    return api('/merchants/' + m.id, { method: 'PATCH', body: JSON.stringify({ enabled: m.enabled ? 0 : 1 }) })
+      .then(load).catch((err) => toast(err.message, true));
+  }
+  if (t.dataset.check) {
+    t.disabled = true; t.textContent = 'Vérification…';
+    return api('/scan', { method: 'POST', body: JSON.stringify({ product_id: +t.dataset.check }) })
+      .then((r) => { if (r.alerts) playSword(); toast(r.alerts ? `${r.alerts} offre(s) trouvée(s) !` : 'Rien en stock sous ton plafond'); return load(); })
+      .catch((err) => { toast(err.message, true); load(); });
+  }
+});
+
+$('#btn-add').onclick = () => openProductSheet(null);
+$('#btn-add-merchant').onclick = () => openMerchantSheet(null);
+$('#h-product').onchange = drawHistory;
+
+$('#btn-scan').onclick = async function () {
+  this.classList.add('spin');
+  try {
+    const r = await api('/scan', { method: 'POST', body: JSON.stringify({}) });
+    if (r.alerts) playSword();
+    toast(r.alerts ? `${r.alerts} offre(s) trouvée(s) !` : `${r.checked}/${r.of} vérifiés — rien en stock`);
+    await load();
+  } catch (e) { toast(e.message, true); }
+  this.classList.remove('spin');
+};
+
+$$('nav button').forEach((b) => {
+  b.onclick = () => {
+    $$('nav button').forEach((x) => x.classList.toggle('on', x === b));
+    state.view = b.dataset.view;
+    $$('.view').forEach((v) => v.classList.toggle('on', v.id === 'v-' + state.view));
+    if (state.view === 'history') drawHistory();
+    window.scrollTo(0, 0);
+  };
+});
+
+// long press sur le logo = ressaisir le mot de passe
+let lp;
+$('.logo').addEventListener('pointerdown', () => { lp = setTimeout(openTokenSheet, 700); });
+['pointerup', 'pointerleave'].forEach((ev) => $('.logo').addEventListener(ev, () => clearTimeout(lp)));
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+  // le service worker previent l'app quand on ouvre une notification
+  navigator.serviceWorker.addEventListener('message', (e) => {
+    if (e.data && e.data.type === 'sword') playSword();
+  });
+}
+
+// premiere ouverture : demander le mot de passe si le serveur en attend un
+(async () => {
+  try {
+    const ping = await fetch('/api/ping').then((r) => r.json());
+    state.vapid = ping.vapid_public_key;
+    state.push = ping.push_configured;
+    if (ping.token_configured && !store.get(KEY_TOKEN)) return openTokenSheet();
+  } catch {}
+  // ouvert depuis une notification : la lame sonne
+  if (new URLSearchParams(location.search).get('sword')) {
+    playSword();
+    history.replaceState(null, '', location.pathname);
+  }
+  load();
+})();
+</script>
+</body>
+</html>
