@@ -256,6 +256,9 @@ export async function handleApi(request, env) {
   }
 
   // --- reparer l'URL de recherche d'une boutique ---------------------------
+  // Fonction Netlify synchrone normale : ~10s de limite reelle (pas 30, ca
+  // c'est pour les fonctions planifiees). On se garde une marge.
+  const REPAIR_TIME_BUDGET_MS = 8_000;
   const detectMatch = path.match(/^\/api\/merchants\/(\d+)\/detect$/);
   if (detectMatch && method === 'POST') {
     const id = Number(detectMatch[1]);
@@ -263,7 +266,12 @@ export async function handleApi(request, env) {
     if (!m) return bad('boutique inconnue', 404);
     // on teste avec un vrai produit : une URL qui ne remonte rien ne vaut rien
     const probe = await db.prepare('SELECT ean, query, label FROM products WHERE active = 1 ORDER BY id LIMIT 1').first();
-    const res = await detectSearchUrl(m.domain, { ean: probe?.ean, label: probe?.query || probe?.label }, m.search_url);
+    const res = await detectSearchUrl(
+      m.domain,
+      { ean: probe?.ean, label: probe?.query || probe?.label },
+      m.search_url,
+      { deadline: Date.now() + REPAIR_TIME_BUDGET_MS },
+    );
     if (res.ok) {
       await db.prepare('UPDATE merchants SET search_url = ? WHERE id = ?').bind(res.url, id).run();
       // l'ancienne URL a pu memoriser de mauvaises fiches
@@ -283,11 +291,20 @@ export async function handleApi(request, env) {
     ).all()).results;
 
     const probe = await db.prepare('SELECT ean, query, label FROM products WHERE active = 1 ORDER BY id LIMIT 1').first();
-    // on repare par petits paquets pour rester large sous la limite de 30s
-    const lot = muettes.slice(0, 4);
+    // on repare une boutique a la fois, en s'arretant avant la limite reelle
+    // de la fonction (10s) plutot qu'un nombre fixe qui la depassait souvent
+    const deadline = Date.now() + REPAIR_TIME_BUDGET_MS;
     const resultats = [];
-    for (const m of lot) {
-      const res = await detectSearchUrl(m.domain, { ean: probe?.ean, label: probe?.query || probe?.label }, m.search_url);
+    let i = 0;
+    for (; i < muettes.length; i++) {
+      if (Date.now() >= deadline) break;
+      const m = muettes[i];
+      const res = await detectSearchUrl(
+        m.domain,
+        { ean: probe?.ean, label: probe?.query || probe?.label },
+        m.search_url,
+        { deadline },
+      );
       if (res.ok && res.url !== m.search_url) {
         await db.prepare('UPDATE merchants SET search_url = ? WHERE id = ?').bind(res.url, m.id).run();
         await db.prepare('DELETE FROM links WHERE merchant_id = ? AND pinned = 0').bind(m.id).run();
@@ -298,7 +315,7 @@ export async function handleApi(request, env) {
       ok: true,
       reparees: resultats.filter((r) => r.ok).length,
       echecs: resultats.filter((r) => !r.ok).length,
-      restantes: Math.max(0, muettes.length - lot.length),
+      restantes: Math.max(0, muettes.length - i),
       resultats,
     });
   }
@@ -314,7 +331,7 @@ export async function handleApi(request, env) {
       'SELECT * FROM merchants WHERE enabled = 1 AND search_url IS NOT NULL ORDER BY priority, id',
     ).all()).results;
 
-    const res = await findEan(env, product, merchants);
+    const res = await findEan(env, product, merchants, { maxMerchants: 8, deadline: Date.now() + REPAIR_TIME_BUDGET_MS });
     if (res.ok) await db.prepare('UPDATE products SET ean = ? WHERE id = ?').bind(res.ean, id).run();
     return json({ ...res, produit: product.label });
   }

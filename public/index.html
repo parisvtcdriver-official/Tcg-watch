@@ -597,7 +597,7 @@ function openProductSheet(product) {
         const ou = r.sources.map((x) => x.boutique).join(', ');
         toast(`EAN ${r.ean} trouvé chez ${ou}`);
       } else {
-        toast('Aucun code-barres trouvé — précise le nom de recherche', true);
+        toast(`Rien trouvé (${r.essayees || 0} boutique(s) essayée(s))${r.restantes ? ' — reclique pour continuer avec les suivantes' : ' — précise le nom de recherche'}`, true);
       }
     } catch (e) { toast(e.message, true); }
     this.disabled = false; this.textContent = "🔎 Trouver l'EAN automatiquement";
