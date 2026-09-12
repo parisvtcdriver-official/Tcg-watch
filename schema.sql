@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS alerts (
   merchant_id INTEGER NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
   price       REAL,
   tier        TEXT    NOT NULL,             -- deal | normal
+  status      TEXT    NOT NULL DEFAULT 'in_stock', -- in_stock | preorder
   url         TEXT,
   emailed     INTEGER NOT NULL DEFAULT 0,
   mail_error  TEXT,                          -- raison exacte d'un envoi rate (Resend), sinon NULL

@@ -139,9 +139,9 @@ function tierFor(product, price) {
   return 'normal';
 }
 
-async function shouldAlert(db, product, merchantId, price, tier) {
+async function shouldAlert(db, product, merchantId, price, tier, status) {
   const last = await db
-    .prepare('SELECT price, tier, sent_at FROM alerts WHERE product_id = ? AND merchant_id = ? ORDER BY sent_at DESC LIMIT 1')
+    .prepare('SELECT price, tier, status, sent_at FROM alerts WHERE product_id = ? AND merchant_id = ? ORDER BY sent_at DESC LIMIT 1')
     .bind(product.id, merchantId)
     .first();
   if (!last) return true;
@@ -151,6 +151,8 @@ async function shouldAlert(db, product, merchantId, price, tier) {
   // le cooldown ne doit jamais faire rater une meilleure offre
   if (tier === 'deal' && last.tier !== 'deal') return true;
   if (last.price != null && price <= last.price * 0.95) return true;
+  // passer de precommande a vrai stock est une info nouvelle, meme au meme prix
+  if (status === 'in_stock' && last.status === 'preorder') return true;
   return false;
 }
 
@@ -249,13 +251,15 @@ export async function runScan(env, opts = {}) {
   for (const r of results) {
     if (!r?.product) continue;
     const { product, merchant, offer } = r;
-    if (offer.status !== 'in_stock') continue;             // une precommande n'est pas du stock
+    // en stock ET precommande declenchent une alerte (a la demande de Philippe,
+    // le 12/09/2026) ; le mail/push precise toujours lequel des deux c'est.
+    if (offer.status !== 'in_stock' && offer.status !== 'preorder') continue;
     if (offer.price == null) continue;
     if (offer.price > product.price_max) continue;         // hors plafond
     if (offer.price < (product.price_min ?? 0)) continue;  // trop beau : parsing rate ou arnaque
 
     const tier = tierFor(product, offer.price);
-    if (!(await shouldAlert(db, product, merchant.id, offer.price, tier))) continue;
+    if (!(await shouldAlert(db, product, merchant.id, offer.price, tier, offer.status))) continue;
 
     finds.push({
       product_id: product.id,
@@ -265,6 +269,7 @@ export async function runScan(env, opts = {}) {
       price: offer.price,
       confidence: offer.confidence,
       tier,
+      status: offer.status,
       url: offer.url,
       email: product.email,
     });
@@ -279,7 +284,12 @@ export async function runScan(env, opts = {}) {
       byEmail.get(f.email).push(f);
     }
     for (const [email, group] of byEmail) {
-      group.sort((a, b) => (a.tier === b.tier ? a.price - b.price : a.tier === 'deal' ? -1 : 1));
+      // en stock avant precommande, puis bonne affaire avant normal, puis prix croissant
+      group.sort((a, b) => {
+        if (a.status !== b.status) return a.status === 'in_stock' ? -1 : 1;
+        if (a.tier !== b.tier) return a.tier === 'deal' ? -1 : 1;
+        return a.price - b.price;
+      });
       const { subject, html, text } = renderAlertEmail(group, env.APP_URL || null);
       const res = await sendEmail(env, { to: email, subject, html, text });
       if (res.ok) sent += group.length;
@@ -290,8 +300,8 @@ export async function runScan(env, opts = {}) {
       await db.batch(
         group.map((f) =>
           db
-            .prepare('INSERT INTO alerts (product_id, merchant_id, price, tier, url, emailed, mail_error, sent_at) VALUES (?,?,?,?,?,?,?,?)')
-            .bind(f.product_id, f.merchant_id, f.price, f.tier, f.url, res.ok ? 1 : 0, res.ok ? null : String(res.error || 'erreur inconnue'), now),
+            .prepare('INSERT INTO alerts (product_id, merchant_id, price, tier, status, url, emailed, mail_error, sent_at) VALUES (?,?,?,?,?,?,?,?,?)')
+            .bind(f.product_id, f.merchant_id, f.price, f.tier, f.status, f.url, res.ok ? 1 : 0, res.ok ? null : String(res.error || 'erreur inconnue'), now),
         ),
       );
     }
@@ -300,8 +310,10 @@ export async function runScan(env, opts = {}) {
   // --- notification push : la meilleure offre du lot, en tete -------------
   let pushed = null;
   if (finds.length && !dryRun && env.VAPID_PRIVATE_JWK) {
-    const best = [...finds].sort((a, b) =>
-      (a.tier === b.tier ? a.price - b.price : a.tier === 'deal' ? -1 : 1))[0];
+    const best = [...finds].sort((a, b) => {
+      if (a.status !== b.status) return a.status === 'in_stock' ? -1 : 1;
+      return a.tier === b.tier ? a.price - b.price : a.tier === 'deal' ? -1 : 1;
+    })[0];
     pushed = await pushToAll(env, {
       n: finds.length,
       t: best.product_label,
@@ -309,6 +321,7 @@ export async function runScan(env, opts = {}) {
       m: best.merchant_name,
       u: best.url,
       tier: best.tier,
+      status: best.status,
     });
   }
 
@@ -327,6 +340,6 @@ export async function runScan(env, opts = {}) {
     alerts: finds.length,
     emailed: sent,
     pushed,
-    finds: finds.map((f) => ({ product: f.product_label, merchant: f.merchant_name, price: f.price, tier: f.tier, url: f.url })),
+    finds: finds.map((f) => ({ product: f.product_label, merchant: f.merchant_name, price: f.price, tier: f.tier, status: f.status, url: f.url })),
   };
 }

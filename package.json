@@ -5,15 +5,10 @@
   "description": "TCG Watch — veille de stock autonome pour cartes a collectionner (One Piece Card Game, Pokemon, etc.)",
   "type": "module",
   "scripts": {
-    "dev": "netlify dev",
-    "deploy": "netlify deploy --prod",
     "db:init": "turso db shell tcg-watch < schema.sql",
     "test": "node test/offline.test.mjs && node test/push.test.mjs && node test/merchant-url.test.mjs && node test/db.test.mjs"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0"
-  },
-  "devDependencies": {
-    "netlify-cli": "^18.0.0"
   }
 }

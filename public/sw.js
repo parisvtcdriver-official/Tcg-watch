@@ -45,11 +45,12 @@ self.addEventListener('push', (e) => {
   try { d = e.data ? e.data.json() : {}; } catch { /* payload illisible */ }
 
   const deal = d.tier === 'deal';
+  const preorder = d.status === 'preorder';
   const title = d.test
     ? 'TCG Watch — test'
     : d.n > 1
-      ? `${deal ? '🔥' : '🚨'} ${d.n} produits en stock`
-      : deal ? '🔥 Bonne affaire' : '🚨 En stock';
+      ? `${deal ? '🔥' : preorder ? '📦' : '🚨'} ${d.n} produit${d.n > 1 ? 's' : ''} trouvé${d.n > 1 ? 's' : ''}`
+      : deal ? '🔥 Bonne affaire' : preorder ? '📦 Précommande' : '🚨 En stock';
 
   const body = d.test
     ? 'Les notifications fonctionnent. Ouvre pour entendre le son.'
