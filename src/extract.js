@@ -368,40 +368,56 @@ export function confirmProduct(html, url, { ean = null, label = '' } = {}) {
   const wantedCodes = [...tokenize(label)].filter((t) => SET_CODE.test(t));
   const wantedForms = detectForms(label);
 
+  // L'EAN est le seul signal qu'on considere assez fort pour se passer d'une
+  // verification de format/langue : deux produits differents ne partagent
+  // jamais le meme code-barres. Calcule tot pour servir de garde-fou aux
+  // deux controles stricts ci-dessous.
+  const eanConfirmed = Boolean(ean) && (html.includes(String(ean)) || id.gtins.includes(String(ean)));
+
   // Edition / langue. Philippe ne veut jamais du japonais, quel que soit le
   // produit demande : une fiche identifiee comme japonaise est rejetee tout
   // de suite, avant meme de compter les points. Un produit dont le libelle
   // precise explicitement FR ou EN est en plus rejete si la fiche ne montre
   // que l'autre langue (ex. « OP-17 EN » ne doit jamais matcher une fiche
-  // qui n'affiche que FR, et inversement) ; un libelle sans mention de
-  // langue n'est pas restreint par cette regle.
+  // qui n'affiche que FR, et inversement). Sans EAN pour trancher, Philippe
+  // veut que la langue attendue soit *positivement retrouvee* sur la fiche,
+  // pas seulement « non contredite » — une fiche muette sur la langue ne
+  // suffit plus a proposer un prix.
   const pageEdition = detectEdition(heading);
   if (pageEdition.has('jp')) return { ok: false, score: -99, why: 'édition japonaise (jamais voulue)' };
 
   const wantedEdition = detectEdition(label);
-  if (wantedEdition.size && pageEdition.size) {
+  if (wantedEdition.size && !eanConfirmed) {
     const wantsFr = wantedEdition.has('fr');
     const wantsEn = wantedEdition.has('en');
-    if ((wantsFr && !wantsEn && pageEdition.has('en') && !pageEdition.has('fr')) ||
-        (wantsEn && !wantsFr && pageEdition.has('fr') && !pageEdition.has('en'))) {
-      return { ok: false, score: -99, why: `édition demandée (${[...wantedEdition].join('/')}) ≠ édition trouvée (${[...pageEdition].join('/')})` };
-    }
+    const contradiction = (wantsFr && !wantsEn && pageEdition.has('en') && !pageEdition.has('fr')) ||
+                           (wantsEn && !wantsFr && pageEdition.has('fr') && !pageEdition.has('en'));
+    if (contradiction) return { ok: false, score: -99, why: `édition demandée (${[...wantedEdition].join('/')}) ≠ édition trouvée (${[...pageEdition].join('/')})` };
+    const found = (wantsFr && pageEdition.has('fr')) || (wantsEn && pageEdition.has('en'));
+    if (!found) return { ok: false, score: -99, why: `édition demandée (${[...wantedEdition].join('/')}) introuvable sur la fiche` };
   }
 
   let score = 0;
   const why = [];
 
-  if (ean) {
-    const e = String(ean);
-    if (html.includes(e) || id.gtins.includes(e)) { score += 10; why.push('EAN present'); }
-  }
+  if (eanConfirmed) { score += 10; why.push('EAN present'); }
   const codeHit = wantedCodes.some((c) => tokenize(heading).includes(c));
   if (codeHit) { score += 6; why.push('code extension dans le titre'); }
 
+  // Format (display / blister / double-pack / starter / booster simple).
+  // Un « Display 24 boosters » et un simple booster a l'unite partagent le
+  // meme code d'extension et un prix radicalement different : sans ce
+  // controle, un booster a 12 € pouvait passer pour un display a 140 €.
+  // Sans EAN pour trancher, le format attendu doit etre *retrouve* sur la
+  // fiche, pas seulement absent de contradiction.
   const headForms = detectForms(heading);
-  if (wantedForms.size && headForms.size) {
-    if ([...wantedForms].some((f) => headForms.has(f))) { score += 3; why.push('format concordant'); }
-    else { score -= 8; why.push('format contradictoire'); }
+  if (wantedForms.size && !eanConfirmed) {
+    const formMatch = [...wantedForms].some((f) => headForms.has(f));
+    if (formMatch) { score += 3; why.push('format concordant'); }
+    else if (headForms.size) return { ok: false, score: -99, why: `format contradictoire (attendu ${[...wantedForms].join('/')}, trouvé ${[...headForms].join('/')})` };
+    else return { ok: false, score: -99, why: `format attendu (${[...wantedForms].join('/')}) introuvable sur la fiche` };
+  } else if (wantedForms.size && [...wantedForms].some((f) => headForms.has(f))) {
+    score += 3; why.push('format concordant');
   }
 
   // beaucoup de produits distincts sur la page = c'est un rayon, pas une fiche
@@ -450,12 +466,24 @@ const FORMS = [
   ['blister',    /blister/i],
   ['doublepack', /double\s*-?\s*pack|\bdp\s?-?\d{1,2}\b/i],
   ['starter',    /starter|deck\s+de\s+d[ée]marrage|\bst\s?-?\d{1,2}\b/i],
+  // Le booster a l'unite : sans cette categorie, une fiche qui n'annonce ni
+  // display ni blister ni starter passait INAPERCUE (aucune forme detectee)
+  // et le controle de format etait purement et simplement saute — c'est ce
+  // qui laissait un booster a 12 € se faire passer pour un display a 140 €.
+  ['booster',    /\bboosters?\b|\bpochette\b|\bsachet\b/i],
 ];
 
 function detectForms(str) {
   const out = new Set();
   const t = String(str || '');
-  for (const [name, re] of FORMS) if (re.test(t)) out.add(name);
+  for (const [name, re] of FORMS) {
+    // « Display 24 boosters » contient le mot « boosters » sans etre un
+    // booster a l'unite : on ne compte "booster" comme UN format a part que
+    // si aucun format plus specifique n'a deja ete detecte dans la meme
+    // chaine (l'ordre du tableau FORMS place "booster" en dernier).
+    if (name === 'booster' && out.size) continue;
+    if (re.test(t)) out.add(name);
+  }
   return out;
 }
 
