@@ -61,6 +61,8 @@ main{padding:var(--pad);max-width:640px;margin:0 auto}
 .card.dragging{opacity:.9;box-shadow:0 10px 28px rgba(0,0,0,.4);position:relative;z-index:5;touch-action:none}
 .card-head{cursor:pointer}
 .chev{flex-shrink:0;opacity:.45;transition:transform .15s;font-size:15px;align-self:center}
+.handle{padding:6px 10px;font-size:16px;line-height:1;cursor:grab;touch-action:none;flex-shrink:0;align-self:center}
+.handle:active{cursor:grabbing}
 .chev.open{transform:rotate(180deg)}
 .row{display:flex;align-items:flex-start;gap:12px}
 .grow{flex:1;min-width:0}
@@ -379,6 +381,7 @@ function renderProductCards(list) {
             : (best ? `<div class="sub">dès <b>${eur(best.price)}</b></div>` : '')}
         </div>
         ${badge}
+        <button class="btn sm ghost handle" data-handle="${p.id}" title="Maintenir pour déplacer">⠿</button>
         <span class="chev ${expanded ? 'open' : ''}">⌄</span>
       </div>
       ${expanded ? `
@@ -403,17 +406,14 @@ function renderProductCards(list) {
         <button class="btn sm" data-edit="${p.id}">Modifier</button>
         <button class="btn sm" data-check="${p.id}">Vérifier</button>
         <button class="btn sm ghost" data-toggle="${p.id}">${p.active ? 'Mettre en pause' : 'Réactiver'}</button>
-        <button class="btn sm ghost" data-move="${p.id}" data-dir="up" ${i === 0 ? 'disabled' : ''} title="Monter" style="padding:6px 11px">▲</button>
-        <button class="btn sm ghost" data-move="${p.id}" data-dir="down" ${i === list.length - 1 ? 'disabled' : ''} title="Descendre" style="padding:6px 11px">▼</button>
       </div>` : ''}
     </div>`;
   }).join('');
 }
 
 // Enregistre l'ordre actuel (tel qu'affiche a l'ecran) d'un bloc de fiches —
-// appele une seule fois a la fin d'un geste (glisser, ou relachement des
-// boutons ▲▼), jamais a chaque petit pas, pour ne pas multiplier les
-// allers-retours serveur pendant qu'on tient encore le doigt/la souris.
+// appele une seule fois a la fin du geste, jamais a chaque petit pas, pour
+// ne pas multiplier les allers-retours serveur pendant qu'on tient encore.
 async function commitGroupOrder(groupEl) {
   const ids = [...groupEl.querySelectorAll(':scope > .card')].map((c) => +c.dataset.pid);
   try {
@@ -422,82 +422,45 @@ async function commitGroupOrder(groupEl) {
   await load();
 }
 
-// Deplace la fiche d'UN cran dans le DOM (sans appel serveur — voir
-// commitGroupOrder). Renvoie false si on est deja en bout de bloc.
-function stepMove(card, dir) {
-  const groupEl = card.closest('.grp-body');
-  if (!groupEl) return false;
-  const sib = dir === 'up' ? card.previousElementSibling : card.nextElementSibling;
-  if (!sib || !sib.classList.contains('card')) return false;
-  if (dir === 'up') groupEl.insertBefore(card, sib);
-  else groupEl.insertBefore(sib, card);
-  return true;
-}
-
-// ---------- boutons ▲▼ : appui prolongé pour enchaîner les déplacements ----------
-// Comme demandé : on maintient le bouton enfoncé et la fiche continue de
-// monter/descendre toute seule, au lieu de devoir taper plusieurs fois.
-// Un simple tap deplace quand meme d'un cran (premier pas immediat).
-let moveTimer = null, moveInterval = null, moveCard = null, moveGroupEl = null;
-
-function moveHoldStart(e) {
-  const btn = e.target.closest('[data-move]');
-  if (!btn) return;
-  e.preventDefault();
-  const card = state.products.length && document.querySelector(`.card[data-pid="${btn.dataset.move}"]`);
-  if (!card) return;
-  const dir = btn.dataset.dir;
-  moveCard = card;
-  moveGroupEl = card.closest('.grp-body');
-  stepMove(card, dir); // premier pas, immediat
-  clearTimeout(moveTimer); clearInterval(moveInterval);
-  moveTimer = setTimeout(() => {
-    moveInterval = setInterval(() => { if (!stepMove(card, dir)) clearInterval(moveInterval); }, 140);
-  }, 380);
-  try { btn.setPointerCapture(e.pointerId); } catch {}
-}
-
-async function moveHoldEnd() {
-  clearTimeout(moveTimer); clearInterval(moveInterval);
-  moveTimer = moveInterval = null;
-  if (moveGroupEl) { const g = moveGroupEl; moveGroupEl = null; moveCard = null; await commitGroupOrder(g); }
-}
-
-$('#products').addEventListener('pointerdown', moveHoldStart);
-$('#products').addEventListener('pointerup', moveHoldEnd);
-$('#products').addEventListener('pointercancel', moveHoldEnd);
-
-// ---------- glisser-déposer par appui long (réordonner au doigt) ----------
-// Appui maintenu ~420ms sans bouger = on "attrape" la fiche ; ensuite elle
-// suit le doigt verticalement et prend la place de ses voisines dans SON
-// bloc. Un simple tap (relâché avant le délai) reste un tap normal — c'est
-// ce qui permet au clic d'ouverture/fermeture de la fiche de continuer à
-// marcher sans conflit.
+// ---------- glisser-déposer : maintenir puis déplacer directement où on veut ----------
+// Deux façons de l'attraper :
+//  - la poignée ⠿ : la prise est immediate des qu'on appuie dessus (c'est un
+//    element dedie, pas d'ambiguite avec autre chose) ;
+//  - n'importe ou ailleurs sur la fiche : appui maintenu ~420ms sans bouger,
+//    pour laisser un simple tap ouvrir/fermer la fiche comme d'habitude.
+// Dans les deux cas, ensuite, la fiche suit le doigt/la souris verticalement
+// et prend directement la place voulue dans son bloc — pas de pas fixes.
 let dragCard = null, dragGroupEl = null, dragTimer = null, dragArmed = false, dragStartX = 0, dragStartY = 0, dragPointerId = null;
+
+function armDrag(card, pointerId) {
+  dragArmed = true;
+  dragCard = card;
+  dragGroupEl = card.closest('.grp-body');
+  card.classList.add('dragging');
+  // Ceinture et bretelles : la classe .dragging fixe deja touch-action:none
+  // en CSS, mais on le force aussi en inline pour que ce soit pris en compte
+  // sans attendre un re-calcul de style — sur iOS, un pan-y qui traine encore
+  // au moment du premier mouvement fait gagner le defilement de la page a la
+  // place du glisser-deposer.
+  card.style.touchAction = 'none';
+  dragPointerId = pointerId;
+  try { card.setPointerCapture(pointerId); } catch {}
+  if (navigator.vibrate) navigator.vibrate(15);
+}
 
 function cardPointerDown(e) {
   if (e.button != null && e.button !== 0) return; // clic droit/milieu : jamais un drag
-  if (e.target.closest('button,a,input,select,textarea,.grp-head')) return;
+  const handle = e.target.closest('[data-handle]');
   const card = e.target.closest('.card[data-pid]');
   if (!card) return;
+
+  if (handle) { e.preventDefault(); armDrag(card, e.pointerId); return; }
+  if (e.target.closest('button,a,input,select,textarea,.grp-head')) return;
+
   dragStartX = e.clientX; dragStartY = e.clientY;
-  dragPointerId = e.pointerId;
   dragArmed = false;
   clearTimeout(dragTimer);
-  dragTimer = setTimeout(() => {
-    dragArmed = true;
-    dragCard = card;
-    dragGroupEl = card.closest('.grp-body');
-    card.classList.add('dragging');
-    // Ceinture et bretelles : la classe .dragging fixe deja touch-action:none
-    // en CSS, mais on le force aussi en inline pour que ce soit pris en compte
-    // sans attendre un re-calcul de style — sur iOS, un pan-y qui traine encore
-    // au moment du premier mouvement fait gagner le defilement de la page a la
-    // place du glisser-deposer.
-    card.style.touchAction = 'none';
-    try { card.setPointerCapture(dragPointerId); } catch {}
-    if (navigator.vibrate) navigator.vibrate(15);
-  }, 420);
+  dragTimer = setTimeout(() => armDrag(card, e.pointerId), 420);
 }
 
 function cardPointerMove(e) {
@@ -1160,20 +1123,20 @@ document.addEventListener('click', (e) => {
     saveSet(KEY_COLLAPSED, collapsedGroups);
     return renderProducts();
   }
-  // Depli d'une fiche produit (compact -> détail). Ignoré juste après un
-  // glisser-déposer pour ne pas rouvrir/refermer la fiche qu'on vient de
-  // lâcher.
+  // Depli d'une fiche produit (compact -> détail). Ignoré sur la poignée de
+  // déplacement, et juste après un glisser-déposer pour ne pas rouvrir/
+  // refermer la fiche qu'on vient de lâcher.
   const head = e.target.closest('[data-toggle-card]');
   if (head) {
-    if (justDragged) return;
+    if (justDragged || e.target.closest('[data-handle]')) return;
     const id = +head.dataset.toggleCard;
     if (expandedCards.has(id)) expandedCards.delete(id); else expandedCards.add(id);
     return renderProducts();
   }
 
-  // [data-move] : gere par moveHoldStart/moveHoldEnd (pointerdown/up) plus
-  // bas, pas ici — un clic classique fait deja un pas via ce mecanisme,
-  // pas besoin d'un second gestionnaire sur l'evenement "click".
+  // [data-handle] : gere par cardPointerDown/Move/Up (pointerdown/move/up)
+  // plus bas, pas ici — le glisser-deposer n'a pas besoin de l'evenement
+  // "click".
   const t = e.target.closest('#m-repair,#a-ack-all,[data-edit],[data-check],[data-toggle],[data-edit-merchant],[data-toggle-merchant],[data-ack]');
   if (!t) return;
 
