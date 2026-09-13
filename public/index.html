@@ -52,12 +52,13 @@ main{padding:var(--pad);max-width:640px;margin:0 auto}
 .view{display:none} .view.on{display:block}
 
 /* ---------- cards ---------- */
-.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:12px;touch-action:pan-y}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:12px;touch-action:pan-y;
+  -webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-user-drag:none}
 .card.deal{border-color:rgba(240,180,41,.45);background:linear-gradient(180deg,rgba(240,180,41,.07),transparent 60%),var(--surface)}
 .card.hit{border-color:rgba(74,222,128,.45);background:linear-gradient(180deg,rgba(74,222,128,.07),transparent 60%),var(--surface)}
 .card.compact{padding:11px 14px;margin-bottom:8px}
 .card.compact .ttl{font-size:14px}
-.card.dragging{opacity:.9;box-shadow:0 10px 28px rgba(0,0,0,.4);position:relative;z-index:5;-webkit-user-select:none;user-select:none}
+.card.dragging{opacity:.9;box-shadow:0 10px 28px rgba(0,0,0,.4);position:relative;z-index:5;touch-action:none}
 .card-head{cursor:pointer}
 .chev{flex-shrink:0;opacity:.45;transition:transform .15s;font-size:15px;align-self:center}
 .chev.open{transform:rotate(180deg)}
@@ -436,6 +437,7 @@ async function moveProduct(id, dir) {
 let dragCard = null, dragGroupEl = null, dragTimer = null, dragArmed = false, dragStartX = 0, dragStartY = 0, dragPointerId = null;
 
 function cardPointerDown(e) {
+  if (e.button != null && e.button !== 0) return; // clic droit/milieu : jamais un drag
   if (e.target.closest('button,a,input,select,textarea,.grp-head')) return;
   const card = e.target.closest('.card[data-pid]');
   if (!card) return;
@@ -448,6 +450,12 @@ function cardPointerDown(e) {
     dragCard = card;
     dragGroupEl = card.closest('.grp-body');
     card.classList.add('dragging');
+    // Ceinture et bretelles : la classe .dragging fixe deja touch-action:none
+    // en CSS, mais on le force aussi en inline pour que ce soit pris en compte
+    // sans attendre un re-calcul de style — sur iOS, un pan-y qui traine encore
+    // au moment du premier mouvement fait gagner le defilement de la page a la
+    // place du glisser-deposer.
+    card.style.touchAction = 'none';
     try { card.setPointerCapture(dragPointerId); } catch {}
     if (navigator.vibrate) navigator.vibrate(15);
   }, 420);
@@ -469,11 +477,17 @@ function cardPointerMove(e) {
   }
 }
 
+function endDrag(card) {
+  card.classList.remove('dragging');
+  card.style.touchAction = '';
+  try { card.releasePointerCapture(dragPointerId); } catch {}
+}
+
 async function cardPointerUp() {
   clearTimeout(dragTimer);
   if (!dragArmed || !dragCard) { dragArmed = false; dragCard = null; dragGroupEl = null; return; }
   const card = dragCard, groupEl = dragGroupEl;
-  card.classList.remove('dragging');
+  endDrag(card);
   dragArmed = false; dragCard = null; dragGroupEl = null;
   justDragged = true; setTimeout(() => { justDragged = false; }, 250);
   const ids = [...groupEl.querySelectorAll(':scope > .card')].map((c) => +c.dataset.pid);
@@ -483,10 +497,19 @@ async function cardPointerUp() {
   await load();
 }
 
+// Le geste a ete interrompu par le systeme (ex. iOS qui reprend la main pour
+// autre chose) : on annule sans rien enregistrer et on restaure l'ordre a
+// l'ecran depuis l'etat courant, sans aller-retour serveur.
+function cardPointerCancel() {
+  clearTimeout(dragTimer);
+  if (dragArmed && dragCard) { endDrag(dragCard); renderProducts(); }
+  dragArmed = false; dragCard = null; dragGroupEl = null;
+}
+
 $('#products').addEventListener('pointerdown', cardPointerDown);
 $('#products').addEventListener('pointermove', cardPointerMove, { passive: false });
 $('#products').addEventListener('pointerup', cardPointerUp);
-$('#products').addEventListener('pointercancel', cardPointerUp);
+$('#products').addEventListener('pointercancel', cardPointerCancel);
 
 // ---------- rendu : marchands ----------
 // Une boutique interrogee souvent et qui ne remonte jamais rien n'est pas
