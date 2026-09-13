@@ -410,23 +410,62 @@ function renderProductCards(list) {
   }).join('');
 }
 
-// Deplace un produit d'un cran dans SON bloc — utile pour un ajustement fin
-// (au clavier/souris ou quand un appui long est malcommode).
-async function moveProduct(id, dir) {
-  const p = state.products.find((x) => x.id === id);
-  if (!p) return;
-  const group = state.products.filter((x) => franchiseOf(x) === franchiseOf(p)).sort((a, b) => sortKey(a) - sortKey(b));
-  const idx = group.findIndex((x) => x.id === id);
-  const swapIdx = dir === 'up' ? idx - 1 : idx + 1;
-  if (swapIdx < 0 || swapIdx >= group.length) return;
-  const other = group[swapIdx];
-  const a = sortKey(p), b = sortKey(other);
-  await Promise.all([
-    api('/products/' + p.id, { method: 'PATCH', body: JSON.stringify({ sort_order: b }) }),
-    api('/products/' + other.id, { method: 'PATCH', body: JSON.stringify({ sort_order: a }) }),
-  ]);
+// Enregistre l'ordre actuel (tel qu'affiche a l'ecran) d'un bloc de fiches —
+// appele une seule fois a la fin d'un geste (glisser, ou relachement des
+// boutons ▲▼), jamais a chaque petit pas, pour ne pas multiplier les
+// allers-retours serveur pendant qu'on tient encore le doigt/la souris.
+async function commitGroupOrder(groupEl) {
+  const ids = [...groupEl.querySelectorAll(':scope > .card')].map((c) => +c.dataset.pid);
+  try {
+    await Promise.all(ids.map((id, idx) => api('/products/' + id, { method: 'PATCH', body: JSON.stringify({ sort_order: idx }) })));
+  } catch (err) { toast(err.message, true); }
   await load();
 }
+
+// Deplace la fiche d'UN cran dans le DOM (sans appel serveur — voir
+// commitGroupOrder). Renvoie false si on est deja en bout de bloc.
+function stepMove(card, dir) {
+  const groupEl = card.closest('.grp-body');
+  if (!groupEl) return false;
+  const sib = dir === 'up' ? card.previousElementSibling : card.nextElementSibling;
+  if (!sib || !sib.classList.contains('card')) return false;
+  if (dir === 'up') groupEl.insertBefore(card, sib);
+  else groupEl.insertBefore(sib, card);
+  return true;
+}
+
+// ---------- boutons ▲▼ : appui prolongé pour enchaîner les déplacements ----------
+// Comme demandé : on maintient le bouton enfoncé et la fiche continue de
+// monter/descendre toute seule, au lieu de devoir taper plusieurs fois.
+// Un simple tap deplace quand meme d'un cran (premier pas immediat).
+let moveTimer = null, moveInterval = null, moveCard = null, moveGroupEl = null;
+
+function moveHoldStart(e) {
+  const btn = e.target.closest('[data-move]');
+  if (!btn) return;
+  e.preventDefault();
+  const card = state.products.length && document.querySelector(`.card[data-pid="${btn.dataset.move}"]`);
+  if (!card) return;
+  const dir = btn.dataset.dir;
+  moveCard = card;
+  moveGroupEl = card.closest('.grp-body');
+  stepMove(card, dir); // premier pas, immediat
+  clearTimeout(moveTimer); clearInterval(moveInterval);
+  moveTimer = setTimeout(() => {
+    moveInterval = setInterval(() => { if (!stepMove(card, dir)) clearInterval(moveInterval); }, 140);
+  }, 380);
+  try { btn.setPointerCapture(e.pointerId); } catch {}
+}
+
+async function moveHoldEnd() {
+  clearTimeout(moveTimer); clearInterval(moveInterval);
+  moveTimer = moveInterval = null;
+  if (moveGroupEl) { const g = moveGroupEl; moveGroupEl = null; moveCard = null; await commitGroupOrder(g); }
+}
+
+$('#products').addEventListener('pointerdown', moveHoldStart);
+$('#products').addEventListener('pointerup', moveHoldEnd);
+$('#products').addEventListener('pointercancel', moveHoldEnd);
 
 // ---------- glisser-déposer par appui long (réordonner au doigt) ----------
 // Appui maintenu ~420ms sans bouger = on "attrape" la fiche ; ensuite elle
@@ -486,15 +525,11 @@ function endDrag(card) {
 async function cardPointerUp() {
   clearTimeout(dragTimer);
   if (!dragArmed || !dragCard) { dragArmed = false; dragCard = null; dragGroupEl = null; return; }
-  const card = dragCard, groupEl = dragGroupEl;
-  endDrag(card);
+  const groupEl = dragGroupEl;
+  endDrag(dragCard);
   dragArmed = false; dragCard = null; dragGroupEl = null;
   justDragged = true; setTimeout(() => { justDragged = false; }, 250);
-  const ids = [...groupEl.querySelectorAll(':scope > .card')].map((c) => +c.dataset.pid);
-  try {
-    await Promise.all(ids.map((id, idx) => api('/products/' + id, { method: 'PATCH', body: JSON.stringify({ sort_order: idx }) })));
-  } catch (err) { toast(err.message, true); }
-  await load();
+  await commitGroupOrder(groupEl);
 }
 
 // Le geste a ete interrompu par le systeme (ex. iOS qui reprend la main pour
@@ -1136,10 +1171,12 @@ document.addEventListener('click', (e) => {
     return renderProducts();
   }
 
-  const t = e.target.closest('#m-repair,#a-ack-all,[data-edit],[data-check],[data-toggle],[data-edit-merchant],[data-toggle-merchant],[data-ack],[data-move]');
+  // [data-move] : gere par moveHoldStart/moveHoldEnd (pointerdown/up) plus
+  // bas, pas ici — un clic classique fait deja un pas via ce mecanisme,
+  // pas besoin d'un second gestionnaire sur l'evenement "click".
+  const t = e.target.closest('#m-repair,#a-ack-all,[data-edit],[data-check],[data-toggle],[data-edit-merchant],[data-toggle-merchant],[data-ack]');
   if (!t) return;
 
-  if (t.dataset.move) return moveProduct(+t.dataset.move, t.dataset.dir);
   if (t.dataset.ack) {
     t.disabled = true;
     return api('/alerts/' + t.dataset.ack + '/ack', { method: 'POST', body: '{}' })
