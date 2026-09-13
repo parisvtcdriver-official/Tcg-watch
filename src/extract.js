@@ -368,6 +368,26 @@ export function confirmProduct(html, url, { ean = null, label = '' } = {}) {
   const wantedCodes = [...tokenize(label)].filter((t) => SET_CODE.test(t));
   const wantedForms = detectForms(label);
 
+  // Edition / langue. Philippe ne veut jamais du japonais, quel que soit le
+  // produit demande : une fiche identifiee comme japonaise est rejetee tout
+  // de suite, avant meme de compter les points. Un produit dont le libelle
+  // precise explicitement FR ou EN est en plus rejete si la fiche ne montre
+  // que l'autre langue (ex. « OP-17 EN » ne doit jamais matcher une fiche
+  // qui n'affiche que FR, et inversement) ; un libelle sans mention de
+  // langue n'est pas restreint par cette regle.
+  const pageEdition = detectEdition(heading);
+  if (pageEdition.has('jp')) return { ok: false, score: -99, why: 'édition japonaise (jamais voulue)' };
+
+  const wantedEdition = detectEdition(label);
+  if (wantedEdition.size && pageEdition.size) {
+    const wantsFr = wantedEdition.has('fr');
+    const wantsEn = wantedEdition.has('en');
+    if ((wantsFr && !wantsEn && pageEdition.has('en') && !pageEdition.has('fr')) ||
+        (wantsEn && !wantsFr && pageEdition.has('fr') && !pageEdition.has('en'))) {
+      return { ok: false, score: -99, why: `édition demandée (${[...wantedEdition].join('/')}) ≠ édition trouvée (${[...pageEdition].join('/')})` };
+    }
+  }
+
   let score = 0;
   const why = [];
 
@@ -436,6 +456,28 @@ function detectForms(str) {
   const out = new Set();
   const t = String(str || '');
   for (const [name, re] of FORMS) if (re.test(t)) out.add(name);
+  return out;
+}
+
+// Edition / langue. Un "OP-17" existe en francais, anglais ET japonais — trois
+// produits differents vendus au meme genre de prix. Philippe ne veut jamais
+// du japonais quel que soit le produit, et un produit explicitement FR ne
+// doit jamais faire remonter le prix d'une fiche EN (ou l'inverse).
+// Mots entiers uniquement : "japonais"/"japanese" ne s'ecrivent jamais par
+// accident, mais "\bEN\b"/"\bFR\b" en minuscule seraient beaucoup trop
+// frequents dans une phrase ("en stock", "il y a fr...") — on ne les detecte
+// donc que sous leur forme abregee EN MAJUSCULES, comme les boutiques les
+// ecrivent en suffixe ("OP-17 EN", "Booster FR").
+const EDITION_JP_WORD = /\bjaponais(?:e)?\b|\bjapanese\b|\bjap\.?\b/i;
+const EDITION_EN_WORD = /\banglais(?:e)?\b|\benglish\b/i;
+const EDITION_FR_WORD = /\bfran[cç]ais(?:e)?\b/i;
+
+function detectEdition(str) {
+  const t = String(str || '');
+  const out = new Set();
+  if (EDITION_JP_WORD.test(t) || /\bJP\b/.test(t)) out.add('jp');
+  if (EDITION_EN_WORD.test(t) || /\bEN\b/.test(t)) out.add('en');
+  if (EDITION_FR_WORD.test(t) || /\bFR\b/.test(t) || /\bVF\b/.test(t)) out.add('fr');
   return out;
 }
 
