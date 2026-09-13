@@ -52,9 +52,15 @@ main{padding:var(--pad);max-width:640px;margin:0 auto}
 .view{display:none} .view.on{display:block}
 
 /* ---------- cards ---------- */
-.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:12px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:12px;touch-action:pan-y}
 .card.deal{border-color:rgba(240,180,41,.45);background:linear-gradient(180deg,rgba(240,180,41,.07),transparent 60%),var(--surface)}
 .card.hit{border-color:rgba(74,222,128,.45);background:linear-gradient(180deg,rgba(74,222,128,.07),transparent 60%),var(--surface)}
+.card.compact{padding:11px 14px;margin-bottom:8px}
+.card.compact .ttl{font-size:14px}
+.card.dragging{opacity:.9;box-shadow:0 10px 28px rgba(0,0,0,.4);position:relative;z-index:5;-webkit-user-select:none;user-select:none}
+.card-head{cursor:pointer}
+.chev{flex-shrink:0;opacity:.45;transition:transform .15s;font-size:15px;align-self:center}
+.chev.open{transform:rotate(180deg)}
 .row{display:flex;align-items:flex-start;gap:12px}
 .grow{flex:1;min-width:0}
 .ttl{font-weight:650;font-size:15.5px;line-height:1.35}
@@ -130,6 +136,11 @@ nav svg{width:21px;height:21px}
 .empty .big{font-size:34px;margin-bottom:12px;opacity:.6}
 .sec{font-size:11.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--txt-3);margin:22px 0 10px}
 .sec:first-child{margin-top:4px}
+.grp-head{display:flex;align-items:center;gap:7px;cursor:pointer;user-select:none;padding:4px 2px}
+.grp-arrow{display:inline-block;transition:transform .15s;font-size:10px}
+.grp-arrow.closed{transform:rotate(-90deg)}
+.grp-count{margin-left:auto;background:var(--surface-2);color:var(--txt-3);border-radius:999px;
+  padding:2px 8px;font-size:10.5px;font-weight:700;letter-spacing:0;text-transform:none}
 .toast{position:fixed;left:50%;bottom:calc(88px + var(--safe-b));transform:translateX(-50%) translateY(12px);
   background:var(--surface-2);border:1px solid var(--line);border-radius:11px;padding:11px 16px;font-size:13.5px;
   z-index:60;opacity:0;pointer-events:none;transition:.22s;max-width:88vw;text-align:center}
@@ -240,6 +251,8 @@ nav svg{width:21px;height:21px}
    ========================================================================= */
 
 const KEY_TOKEN = 'tcgwatch.token';
+const KEY_COLLAPSED = 'tcgwatch.collapsedGroups';
+const KEY_CATORDER = 'tcgwatch.categoryOrder';
 const state = { products: [], merchants: [], latest: [], alerts: [], health: [], mail: false, push: false, vapid: null, devices: null, view: 'alerts' };
 
 const $  = (s, r = document) => r.querySelector(s);
@@ -283,11 +296,12 @@ function bestOffer(product) {
   return inStock[0] || null;
 }
 
-// Bloc d'affichage (One Piece / Pokémon / Autre). Stocke en base (champ
-// "Jeu" dans la fiche produit) pour que le tri soit stable ; deviné une
-// seule fois, au moment de créer la fiche, pour les produits qui ne
-// disent pas explicitement "Pokémon" dans leur nom (ex. la gamme 30 ans :
-// « Duopack Évoli », « Coffret Amphinobi-ex »…).
+// Bloc d'affichage (One Piece / Pokémon / Autre, ou n'importe quel nom que
+// Philippe tape dans la fiche produit — champ "Jeu"). Deviné une seule fois
+// pour les produits qui ne le precisent pas encore (ex. la gamme 30 ans qui
+// ne dit pas "Pokémon" dans son nom : « Duopack Évoli », « Coffret
+// Amphinobi-ex »…). L'ordre des blocs et leur repli sont mémorisés par
+// appareil (localStorage) : ils n'ont pas besoin d'un aller-retour serveur.
 function guessFranchise(p) {
   const s = `${p.label || ''} ${p.query || ''}`.toLowerCase();
   if (/one\s?-?piece|\bop-?\d{1,3}\b/.test(s)) return 'One Piece';
@@ -296,6 +310,24 @@ function guessFranchise(p) {
 }
 const franchiseOf = (p) => p.franchise || guessFranchise(p);
 const sortKey = (p) => (p.sort_order ?? p.id);
+const groupIcon = (name) => name === 'One Piece' ? '🏴‍☠️' : name === 'Pokémon' ? '⚡' : name === 'Autre' ? '🎴' : '📦';
+
+function loadSet(key) { try { return new Set(JSON.parse(store.get(key) || '[]')); } catch { return new Set(); } }
+function saveSet(key, set) { store.set(key, JSON.stringify([...set])); }
+const collapsedGroups = loadSet(KEY_COLLAPSED);
+// Fiches depliees : etat volatile (pas de persistance), c'est une consultation
+// ponctuelle, pas une preference durable — au prochain chargement tout est
+// de nouveau compact, ce que Philippe a demande.
+const expandedCards = new Set();
+let justDragged = false; // evite qu'un clic de fin de glisser-deposer ne re-ouvre/replie une fiche
+
+function categoryOrder() {
+  const present = [...new Set(state.products.map(franchiseOf))];
+  const saved = (() => { try { return JSON.parse(store.get(KEY_CATORDER) || '[]'); } catch { return []; } })();
+  const known = ['One Piece', 'Pokémon', 'Autre'];
+  const ordered = [...saved, ...known, ...present].filter((c, i, arr) => present.includes(c) && arr.indexOf(c) === i);
+  return ordered;
+}
 
 function renderProducts() {
   const host = $('#products');
@@ -305,14 +337,16 @@ function renderProducts() {
     return;
   }
 
-  const order = [['One Piece', '🏴‍☠️ One Piece'], ['Pokémon', '⚡ Pokémon'], ['Autre', '🎴 Autres']];
-  const groups = order
-    .map(([key, title]) => [title, state.products.filter((p) => franchiseOf(p) === key).sort((a, b) => sortKey(a) - sortKey(b))])
-    .filter(([, list]) => list.length);
-
-  host.innerHTML = groups.map(([title, list]) => `
-    <div class="sec">${title}</div>
-    ${renderProductCards(list)}`).join('');
+  host.innerHTML = categoryOrder().map((name) => {
+    const list = state.products.filter((p) => franchiseOf(p) === name).sort((a, b) => sortKey(a) - sortKey(b));
+    if (!list.length) return '';
+    const collapsed = collapsedGroups.has(name);
+    return `<div class="sec grp-head" data-group="${esc(name)}">
+        <span class="grp-arrow ${collapsed ? 'closed' : ''}">▾</span>${groupIcon(name)} ${esc(name)}
+        <span class="grp-count">${list.length}</span>
+      </div>
+      <div class="grp-body" data-group="${esc(name)}" ${collapsed ? 'hidden' : ''}>${renderProductCards(list)}</div>`;
+  }).join('');
 }
 
 function renderProductCards(list) {
@@ -324,6 +358,7 @@ function renderProductCards(list) {
       return rank(a) - rank(b) || ((a.price ?? 1e9) - (b.price ?? 1e9));
     });
     const shown = offers.slice(0, 5);
+    const expanded = expandedCards.has(p.id);
 
     const badge = !p.active
       ? '<span class="badge b-off">en pause</span>'
@@ -332,14 +367,20 @@ function renderProductCards(list) {
       : offers.some((o) => o.status === 'preorder') ? '<span class="badge b-pre">précommande</span>'
       : '<span class="badge b-oos">pas de stock</span>';
 
-    return `<div class="card ${isDeal ? 'deal' : best ? 'hit' : ''}">
-      <div class="row">
+    // Compact par defaut : une seule ligne (nom + badge + meilleur prix).
+    // Le detail (EAN, plafonds, boutiques, actions) n'apparait qu'au clic.
+    return `<div class="card ${expanded ? '' : 'compact'} ${isDeal ? 'deal' : best ? 'hit' : ''}" data-pid="${p.id}">
+      <div class="row card-head" data-toggle-card="${p.id}">
         <div class="grow">
           <div class="ttl">${esc(p.label)}</div>
-          <div class="sub">${p.ean ? '<span class="mono">' + esc(p.ean) + '</span>' : esc(p.query || '')}</div>
+          ${expanded
+            ? `<div class="sub">${p.ean ? '<span class="mono">' + esc(p.ean) + '</span>' : esc(p.query || '')}</div>`
+            : (best ? `<div class="sub">dès <b>${eur(best.price)}</b></div>` : '')}
         </div>
         ${badge}
+        <span class="chev ${expanded ? 'open' : ''}">⌄</span>
       </div>
+      ${expanded ? `
       <div class="caps">
         <div class="cap">max <b>${eur(p.price_max)}</b></div>
         ${p.price_deal != null ? `<div class="cap">bonne affaire <b>≤ ${eur(p.price_deal)}</b></div>` : ''}
@@ -363,14 +404,13 @@ function renderProductCards(list) {
         <button class="btn sm ghost" data-toggle="${p.id}">${p.active ? 'Mettre en pause' : 'Réactiver'}</button>
         <button class="btn sm ghost" data-move="${p.id}" data-dir="up" ${i === 0 ? 'disabled' : ''} title="Monter" style="padding:6px 11px">▲</button>
         <button class="btn sm ghost" data-move="${p.id}" data-dir="down" ${i === list.length - 1 ? 'disabled' : ''} title="Descendre" style="padding:6px 11px">▼</button>
-      </div>
+      </div>` : ''}
     </div>`;
   }).join('');
 }
 
-// Deplace un produit d'un cran dans SON bloc (One Piece / Pokémon / Autres) —
-// c'est le "haut/bas sur mobile" demande par Philippe. Pas de glisser-deposer :
-// deux boutons suffisent et marchent partout, y compris au doigt.
+// Deplace un produit d'un cran dans SON bloc — utile pour un ajustement fin
+// (au clavier/souris ou quand un appui long est malcommode).
 async function moveProduct(id, dir) {
   const p = state.products.find((x) => x.id === id);
   if (!p) return;
@@ -386,6 +426,67 @@ async function moveProduct(id, dir) {
   ]);
   await load();
 }
+
+// ---------- glisser-déposer par appui long (réordonner au doigt) ----------
+// Appui maintenu ~420ms sans bouger = on "attrape" la fiche ; ensuite elle
+// suit le doigt verticalement et prend la place de ses voisines dans SON
+// bloc. Un simple tap (relâché avant le délai) reste un tap normal — c'est
+// ce qui permet au clic d'ouverture/fermeture de la fiche de continuer à
+// marcher sans conflit.
+let dragCard = null, dragGroupEl = null, dragTimer = null, dragArmed = false, dragStartX = 0, dragStartY = 0, dragPointerId = null;
+
+function cardPointerDown(e) {
+  if (e.target.closest('button,a,input,select,textarea,.grp-head')) return;
+  const card = e.target.closest('.card[data-pid]');
+  if (!card) return;
+  dragStartX = e.clientX; dragStartY = e.clientY;
+  dragPointerId = e.pointerId;
+  dragArmed = false;
+  clearTimeout(dragTimer);
+  dragTimer = setTimeout(() => {
+    dragArmed = true;
+    dragCard = card;
+    dragGroupEl = card.closest('.grp-body');
+    card.classList.add('dragging');
+    try { card.setPointerCapture(dragPointerId); } catch {}
+    if (navigator.vibrate) navigator.vibrate(15);
+  }, 420);
+}
+
+function cardPointerMove(e) {
+  if (!dragArmed) {
+    if (Math.abs(e.clientX - dragStartX) > 9 || Math.abs(e.clientY - dragStartY) > 9) clearTimeout(dragTimer);
+    return;
+  }
+  if (!dragCard || !dragGroupEl) return;
+  e.preventDefault();
+  const siblings = [...dragGroupEl.querySelectorAll(':scope > .card')].filter((c) => c !== dragCard);
+  for (const sib of siblings) {
+    const r = sib.getBoundingClientRect();
+    const mid = r.top + r.height / 2;
+    if (e.clientY < mid) { dragGroupEl.insertBefore(dragCard, sib); break; }
+    if (sib === siblings[siblings.length - 1]) dragGroupEl.insertBefore(dragCard, sib.nextSibling);
+  }
+}
+
+async function cardPointerUp() {
+  clearTimeout(dragTimer);
+  if (!dragArmed || !dragCard) { dragArmed = false; dragCard = null; dragGroupEl = null; return; }
+  const card = dragCard, groupEl = dragGroupEl;
+  card.classList.remove('dragging');
+  dragArmed = false; dragCard = null; dragGroupEl = null;
+  justDragged = true; setTimeout(() => { justDragged = false; }, 250);
+  const ids = [...groupEl.querySelectorAll(':scope > .card')].map((c) => +c.dataset.pid);
+  try {
+    await Promise.all(ids.map((id, idx) => api('/products/' + id, { method: 'PATCH', body: JSON.stringify({ sort_order: idx }) })));
+  } catch (err) { toast(err.message, true); }
+  await load();
+}
+
+$('#products').addEventListener('pointerdown', cardPointerDown);
+$('#products').addEventListener('pointermove', cardPointerMove, { passive: false });
+$('#products').addEventListener('pointerup', cardPointerUp);
+$('#products').addEventListener('pointercancel', cardPointerUp);
 
 // ---------- rendu : marchands ----------
 // Une boutique interrogee souvent et qui ne remonte jamais rien n'est pas
@@ -602,10 +703,11 @@ function openProductSheet(product) {
 
     <div class="field">
       <label>Jeu</label>
-      <select id="f-franchise">
-        ${['One Piece', 'Pokémon', 'Autre'].map((g) => `<option value="${g}" ${(p.franchise || guessFranchise(p)) === g ? 'selected' : ''}>${g}</option>`).join('')}
-      </select>
-      <div class="hint">Sert à regrouper la liste en blocs.</div>
+      <input id="f-franchise" list="f-franchise-list" value="${esc(p.franchise || guessFranchise(p))}" placeholder="One Piece, Pokémon…">
+      <datalist id="f-franchise-list">
+        ${[...new Set(['One Piece', 'Pokémon', 'Autre', ...state.products.map(franchiseOf)])].map((g) => `<option value="${esc(g)}">`).join('')}
+      </datalist>
+      <div class="hint">Sert à regrouper la liste en blocs. Tape un nom qui n'existe pas encore pour créer une nouvelle catégorie.</div>
     </div>
 
     <div class="field">
@@ -673,7 +775,7 @@ function openProductSheet(product) {
       price_deal: $('#f-deal').value.replace(',', '.'),
       email: $('#f-email').value.trim(),
       cooldown_hours: $('#f-cool').value,
-      franchise: $('#f-franchise').value,
+      franchise: $('#f-franchise').value.trim(),
     };
     if (!payload.label) return toast('Il manque le nom affiché', true);
     if (!payload.ean && !payload.query) return toast('Il faut un EAN ou un nom à rechercher', true);
@@ -992,6 +1094,25 @@ async function load() {
 
 // ---------- interactions ----------
 document.addEventListener('click', (e) => {
+  // Repli d'un bloc (One Piece / Pokémon / …) : mémorisé par appareil.
+  const grp = e.target.closest('.grp-head[data-group]');
+  if (grp) {
+    const name = grp.dataset.group;
+    if (collapsedGroups.has(name)) collapsedGroups.delete(name); else collapsedGroups.add(name);
+    saveSet(KEY_COLLAPSED, collapsedGroups);
+    return renderProducts();
+  }
+  // Depli d'une fiche produit (compact -> détail). Ignoré juste après un
+  // glisser-déposer pour ne pas rouvrir/refermer la fiche qu'on vient de
+  // lâcher.
+  const head = e.target.closest('[data-toggle-card]');
+  if (head) {
+    if (justDragged) return;
+    const id = +head.dataset.toggleCard;
+    if (expandedCards.has(id)) expandedCards.delete(id); else expandedCards.add(id);
+    return renderProducts();
+  }
+
   const t = e.target.closest('#m-repair,#a-ack-all,[data-edit],[data-check],[data-toggle],[data-edit-merchant],[data-toggle-merchant],[data-ack],[data-move]');
   if (!t) return;
 
