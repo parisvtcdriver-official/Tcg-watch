@@ -141,19 +141,27 @@ function tierFor(product, price) {
 
 async function shouldAlert(db, product, merchantId, price, tier, status) {
   const last = await db
-    .prepare('SELECT price, tier, status, sent_at FROM alerts WHERE product_id = ? AND merchant_id = ? ORDER BY sent_at DESC LIMIT 1')
+    .prepare('SELECT price, tier, status, sent_at, acknowledged_at FROM alerts WHERE product_id = ? AND merchant_id = ? ORDER BY sent_at DESC LIMIT 1')
     .bind(product.id, merchantId)
     .first();
   if (!last) return true;
 
-  const ageHours = (Date.now() - Date.parse(`${last.sent_at.replace(' ', 'T')}Z`)) / 3_600_000;
-  if (!Number.isFinite(ageHours) || ageHours >= (product.cooldown_hours ?? 12)) return true;
-  // le cooldown ne doit jamais faire rater une meilleure offre
+  // Une meilleure offre est toujours une info nouvelle, meme si la derniere
+  // alerte n'a pas encore ete validee dans l'app.
   if (tier === 'deal' && last.tier !== 'deal') return true;
   if (last.price != null && price <= last.price * 0.95) return true;
   // passer de precommande a vrai stock est une info nouvelle, meme au meme prix
   if (status === 'in_stock' && last.status === 'preorder') return true;
-  return false;
+
+  // Rien de mieux qu'avant : Philippe a demande a ne plus recevoir la meme
+  // alerte en boucle. Tant qu'il n'a pas clique "vu" sur la precedente dans
+  // l'app (POST /api/alerts/{id}/ack), on ne la renvoie pas, quel que soit
+  // le temps ecoule. Une fois validee, cooldown_hours reprend la main pour
+  // une eventuelle piqure de rappel si l'offre dure encore.
+  if (!last.acknowledged_at) return false;
+
+  const ageHours = (Date.now() - Date.parse(`${last.sent_at.replace(' ', 'T')}Z`)) / 3_600_000;
+  return !Number.isFinite(ageHours) || ageHours >= (product.cooldown_hours ?? 12);
 }
 
 // --- le scan ---------------------------------------------------------------

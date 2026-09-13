@@ -154,7 +154,7 @@ export async function handleApi(request, env) {
 
     const res = await db
       .prepare(
-        'INSERT INTO products (label, ean, query, price_min, price_max, price_deal, email, cooldown_hours, notes, active) VALUES (?,?,?,?,?,?,?,?,?,1)',
+        'INSERT INTO products (label, ean, query, price_min, price_max, price_deal, email, cooldown_hours, notes, franchise, active) VALUES (?,?,?,?,?,?,?,?,?,?,1)',
       )
       .bind(
         label,
@@ -166,6 +166,7 @@ export async function handleApi(request, env) {
         String(b.email).trim(),
         Number(b.cooldown_hours) || 12,
         String(b.notes || '').trim() || null,
+        String(b.franchise || '').trim() || null,
       )
       .run();
     return json({ ok: true, id: res.meta?.last_row_id });
@@ -185,19 +186,34 @@ export async function handleApi(request, env) {
     }
     if (method === 'PATCH') {
       const b = await body(request);
-      const fields = ['label', 'ean', 'query', 'price_min', 'price_max', 'price_deal', 'email', 'active', 'cooldown_hours', 'notes'];
+      const fields = ['label', 'ean', 'query', 'price_min', 'price_max', 'price_deal', 'email', 'active', 'cooldown_hours', 'notes', 'sort_order', 'franchise'];
       const sets = [];
       const vals = [];
       for (const f of fields) {
         if (!(f in b)) continue;
         sets.push(`${f} = ?`);
-        vals.push(['price_min', 'price_max', 'price_deal'].includes(f) ? num(b[f]) : ['active', 'cooldown_hours'].includes(f) ? Number(b[f]) : b[f] === '' ? null : b[f]);
+        vals.push(['price_min', 'price_max', 'price_deal'].includes(f) ? num(b[f]) : ['active', 'cooldown_hours', 'sort_order'].includes(f) ? Number(b[f]) : b[f] === '' ? null : b[f]);
       }
       if (!sets.length) return bad('rien a modifier');
       vals.push(id);
       await db.prepare(`UPDATE products SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run();
       return json({ ok: true });
     }
+  }
+
+  // --- alertes ---------------------------------------------------------------
+  // "vu" dans l'app : tant qu'une alerte n'est pas validee ici, shouldAlert()
+  // (scan.js) ne renvoie jamais la meme trouvaille — c'est ce que Philippe a
+  // demande pour ne plus recevoir la meme notification en boucle.
+  const alertAckMatch = path.match(/^\/api\/alerts\/(\d+)\/ack$/);
+  if (alertAckMatch && method === 'POST') {
+    const id = Number(alertAckMatch[1]);
+    await db.prepare("UPDATE alerts SET acknowledged_at = datetime('now') WHERE id = ?").bind(id).run();
+    return json({ ok: true });
+  }
+  if (path === '/api/alerts/ack-all' && method === 'POST') {
+    await db.prepare("UPDATE alerts SET acknowledged_at = datetime('now') WHERE acknowledged_at IS NULL").run();
+    return json({ ok: true });
   }
 
   // --- marchands -----------------------------------------------------------

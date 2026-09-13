@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS products (
   active         INTEGER NOT NULL DEFAULT 1,
   cooldown_hours INTEGER NOT NULL DEFAULT 12,
   notes          TEXT,
+  sort_order     INTEGER,                   -- position choisie a la main dans la liste (par franchise)
+  franchise      TEXT,                      -- 'One Piece' | 'Pokémon' | 'Autre' -- bloc d'affichage
   created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -62,6 +64,8 @@ CREATE TABLE IF NOT EXISTS alerts (
   url         TEXT,
   emailed     INTEGER NOT NULL DEFAULT 0,
   mail_error  TEXT,                          -- raison exacte d'un envoi rate (Resend), sinon NULL
+  acknowledged_at TEXT,                      -- rempli quand Philippe clique "vu" dans l'app ; tant que
+                                              -- c'est vide, la meme trouvaille n'est jamais renvoyee
   sent_at     TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 

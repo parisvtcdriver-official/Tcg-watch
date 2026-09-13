@@ -283,6 +283,20 @@ function bestOffer(product) {
   return inStock[0] || null;
 }
 
+// Bloc d'affichage (One Piece / Pokémon / Autre). Stocke en base (champ
+// "Jeu" dans la fiche produit) pour que le tri soit stable ; deviné une
+// seule fois, au moment de créer la fiche, pour les produits qui ne
+// disent pas explicitement "Pokémon" dans leur nom (ex. la gamme 30 ans :
+// « Duopack Évoli », « Coffret Amphinobi-ex »…).
+function guessFranchise(p) {
+  const s = `${p.label || ''} ${p.query || ''}`.toLowerCase();
+  if (/one\s?-?piece|\bop-?\d{1,3}\b/.test(s)) return 'One Piece';
+  if (/pok[ée]mon|30\s*(e\s*)?(ans|anniversaire)|[ée]voli|amphinobi|nymphali|m[ée]tamorph|mentali|noctali|\bmew\b|mewtwo/.test(s)) return 'Pokémon';
+  return 'Autre';
+}
+const franchiseOf = (p) => p.franchise || guessFranchise(p);
+const sortKey = (p) => (p.sort_order ?? p.id);
+
 function renderProducts() {
   const host = $('#products');
   if (!state.products.length) {
@@ -290,7 +304,19 @@ function renderProducts() {
       Aucune alerte pour l'instant.<br>Ajoute un produit par son code EAN ou son nom.</div>`;
     return;
   }
-  host.innerHTML = state.products.map((p) => {
+
+  const order = [['One Piece', '🏴‍☠️ One Piece'], ['Pokémon', '⚡ Pokémon'], ['Autre', '🎴 Autres']];
+  const groups = order
+    .map(([key, title]) => [title, state.products.filter((p) => franchiseOf(p) === key).sort((a, b) => sortKey(a) - sortKey(b))])
+    .filter(([, list]) => list.length);
+
+  host.innerHTML = groups.map(([title, list]) => `
+    <div class="sec">${title}</div>
+    ${renderProductCards(list)}`).join('');
+}
+
+function renderProductCards(list) {
+  return list.map((p, i) => {
     const best = bestOffer(p);
     const isDeal = best && p.price_deal != null && best.price <= p.price_deal;
     const offers = offersFor(p.id).sort((a, b) => {
@@ -335,9 +361,30 @@ function renderProducts() {
         <button class="btn sm" data-edit="${p.id}">Modifier</button>
         <button class="btn sm" data-check="${p.id}">Vérifier</button>
         <button class="btn sm ghost" data-toggle="${p.id}">${p.active ? 'Mettre en pause' : 'Réactiver'}</button>
+        <button class="btn sm ghost" data-move="${p.id}" data-dir="up" ${i === 0 ? 'disabled' : ''} title="Monter" style="padding:6px 11px">▲</button>
+        <button class="btn sm ghost" data-move="${p.id}" data-dir="down" ${i === list.length - 1 ? 'disabled' : ''} title="Descendre" style="padding:6px 11px">▼</button>
       </div>
     </div>`;
   }).join('');
+}
+
+// Deplace un produit d'un cran dans SON bloc (One Piece / Pokémon / Autres) —
+// c'est le "haut/bas sur mobile" demande par Philippe. Pas de glisser-deposer :
+// deux boutons suffisent et marchent partout, y compris au doigt.
+async function moveProduct(id, dir) {
+  const p = state.products.find((x) => x.id === id);
+  if (!p) return;
+  const group = state.products.filter((x) => franchiseOf(x) === franchiseOf(p)).sort((a, b) => sortKey(a) - sortKey(b));
+  const idx = group.findIndex((x) => x.id === id);
+  const swapIdx = dir === 'up' ? idx - 1 : idx + 1;
+  if (swapIdx < 0 || swapIdx >= group.length) return;
+  const other = group[swapIdx];
+  const a = sortKey(p), b = sortKey(other);
+  await Promise.all([
+    api('/products/' + p.id, { method: 'PATCH', body: JSON.stringify({ sort_order: b }) }),
+    api('/products/' + other.id, { method: 'PATCH', body: JSON.stringify({ sort_order: a }) }),
+  ]);
+  await load();
 }
 
 // ---------- rendu : marchands ----------
@@ -401,12 +448,17 @@ async function repairMerchants(btn) {
 
 function renderLog() {
   const a = state.alerts;
+  const nonVues = a.filter((x) => !x.acknowledged_at).length;
   $('#log-alerts').innerHTML = !a.length
     ? '<div class="empty">Aucune alerte envoyée pour le moment.<br>C\'est normal tant que rien n\'est en stock.</div>'
-    : a.map((x) => `<div class="log">
+    : (nonVues > 1 ? `<div class="actions" style="margin-bottom:8px"><button class="btn sm ghost" id="a-ack-all">Tout marquer comme vu (${nonVues})</button></div>` : '')
+      + a.map((x) => `<div class="log" style="${x.acknowledged_at ? 'opacity:.55' : ''}">
         <span class="t">${new Date(x.sent_at.replace(' ', 'T') + 'Z').toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
         <span class="grow">${x.tier === 'deal' ? '🔥 ' : x.status === 'preorder' ? '📦 ' : ''}${esc(x.product_label)} — <b>${eur(x.price)}</b> chez ${esc(x.merchant_name)}${x.status === 'preorder' ? ' <span style="color:var(--blue,#5fb3e0)">(précommande)</span>' : ''}
           ${x.emailed ? '' : ` <span style="color:var(--red)" title="${esc(x.mail_error || 'raison inconnue')}">(mail non envoyé : ${esc(x.mail_error || 'raison inconnue')})</span>`}</span>
+        ${x.acknowledged_at
+          ? '<span class="sub" style="white-space:nowrap">✓ vu</span>'
+          : `<button class="btn sm ghost" style="white-space:nowrap" data-ack="${x.id}">✓ Vu</button>`}
       </div>`).join('');
 
   const active = state.products.filter((p) => p.active).length;
@@ -549,6 +601,14 @@ function openProductSheet(product) {
     </div>
 
     <div class="field">
+      <label>Jeu</label>
+      <select id="f-franchise">
+        ${['One Piece', 'Pokémon', 'Autre'].map((g) => `<option value="${g}" ${(p.franchise || guessFranchise(p)) === g ? 'selected' : ''}>${g}</option>`).join('')}
+      </select>
+      <div class="hint">Sert à regrouper la liste en blocs.</div>
+    </div>
+
+    <div class="field">
       <label>Fourchette de prix</label>
       <div class="three">
         <input id="f-min" inputmode="decimal" value="${p.price_min ?? ''}" placeholder="min €">
@@ -613,6 +673,7 @@ function openProductSheet(product) {
       price_deal: $('#f-deal').value.replace(',', '.'),
       email: $('#f-email').value.trim(),
       cooldown_hours: $('#f-cool').value,
+      franchise: $('#f-franchise').value,
     };
     if (!payload.label) return toast('Il manque le nom affiché', true);
     if (!payload.ean && !payload.query) return toast('Il faut un EAN ou un nom à rechercher', true);
@@ -931,9 +992,20 @@ async function load() {
 
 // ---------- interactions ----------
 document.addEventListener('click', (e) => {
-  const t = e.target.closest('#m-repair,[data-edit],[data-check],[data-toggle],[data-edit-merchant],[data-toggle-merchant]');
+  const t = e.target.closest('#m-repair,#a-ack-all,[data-edit],[data-check],[data-toggle],[data-edit-merchant],[data-toggle-merchant],[data-ack],[data-move]');
   if (!t) return;
 
+  if (t.dataset.move) return moveProduct(+t.dataset.move, t.dataset.dir);
+  if (t.dataset.ack) {
+    t.disabled = true;
+    return api('/alerts/' + t.dataset.ack + '/ack', { method: 'POST', body: '{}' })
+      .then(load).catch((err) => { toast(err.message, true); t.disabled = false; });
+  }
+  if (t.id === 'a-ack-all') {
+    t.disabled = true;
+    return api('/alerts/ack-all', { method: 'POST', body: '{}' })
+      .then(load).catch((err) => { toast(err.message, true); t.disabled = false; });
+  }
   if (t.dataset.edit) return openProductSheet(state.products.find((p) => p.id === +t.dataset.edit));
   if (t.dataset.editMerchant) return openMerchantSheet(state.merchants.find((m) => m.id === +t.dataset.editMerchant));
 
